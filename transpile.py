@@ -11,7 +11,7 @@ from dsl import rules_to_records, schemas_to_records
 
 
 
-async def do_need_to_recompile_transpiler(session, pipeline_name, curr_transpiler_sql):
+async def do_need_to_recompile_transpiler(session, pipeline_name, curr_transpiler_sql, curr_udf_rs):
     url = f'/v0/pipelines/{pipeline_name}'
     async with session.get(url) as resp:
         json_resp = await resp.json()
@@ -19,8 +19,9 @@ async def do_need_to_recompile_transpiler(session, pipeline_name, curr_transpile
             case {'error_code': 'UnknownPipelineName'}:
                 print("Transpiler pipeline does not exist")
                 return True
-            case {'program_code': program_code} if program_code != curr_transpiler_sql:
-                return True
+            case {'program_code': program_code, 'udf_rust': udf_rs}:
+                if program_code != curr_transpiler_sql or udf_rs != curr_udf_rs:
+                    return True
     return False
 
 
@@ -32,7 +33,7 @@ async def fetch_pipeline_status(session, pipeline_name):
 
 
 
-async def recompile_transpiler(session, pipeline_name, transpiler_sql):
+async def recompile_transpiler(session, pipeline_name, transpiler_sql, udf_rs):
     status = await fetch_pipeline_status(session, pipeline_name)
     # print(f"STATUS: {status}")
     has_prev_version = not (status.get('error_code', None) == 'UnknownPipelineName')
@@ -61,7 +62,12 @@ async def recompile_transpiler(session, pipeline_name, transpiler_sql):
             await asyncio.sleep(1)
 
     url = f'/v0/pipelines/{pipeline_name}'
-    async with session.put(url, json={'program_code': transpiler_sql, 'name': pipeline_name}) as resp:
+    data = {
+        'program_code': transpiler_sql,
+        'name': pipeline_name,
+        'udf_rust': udf_rs,
+    }
+    async with session.put(url, json=data) as resp:
         if resp.status not   in [200, 201]:
             body = await resp.text()
             raise Exception(f"Unexpected response {resp.status}: {body}")
@@ -107,13 +113,18 @@ def read_transpiler_sql():
     sql_files = [open(f'{curr_dir}/transpiler/{f}', 'r').read() for f in sql_files]
     return '\n'.join(sql_files)
 
-async def ensure_transpiler_pipeline_is_ready(session, pipeline_name):
+def read_transpiler_udf_rs():
     curr_dir = os.path.abspath(os.path.dirname(__file__))
+    return open(f'{curr_dir}/transpiler/udf.rs', 'r').read()
+
+async def ensure_transpiler_pipeline_is_ready(session, pipeline_name):
+    # curr_dir = os.path.abspath(os.path.dirname(__file__))
     transpiler_sql = read_transpiler_sql()
+    udf_rs = read_transpiler_udf_rs()
     # retrieve current version of program_code for transpiler pipeline
     # is it is not the same as on on the disc, recompile it
-    if (await do_need_to_recompile_transpiler(session, pipeline_name, transpiler_sql)):
-        await recompile_transpiler(session, pipeline_name, transpiler_sql)
+    if (await do_need_to_recompile_transpiler(session, pipeline_name, transpiler_sql, udf_rs)):
+        await recompile_transpiler(session, pipeline_name, transpiler_sql, udf_rs)
     print("Waiting for transpiler to be ready")
     await wait_till_transpiler_compiled(session, pipeline_name)
     await ensure_transpiler_started(session, pipeline_name)

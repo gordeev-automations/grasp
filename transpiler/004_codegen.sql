@@ -1,8 +1,7 @@
 
 /*
-
-# CODEGENERATION
-
+# same variable in the same rule can be bound several times.
+# we select one binding as canonical, and use it for grouping and return expressions.
 */
 
 /*
@@ -176,7 +175,7 @@ substituted_array_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated: some<
     substituted_expr(
         pipeline_id:, rule_id:, expr_id: element_expr_id, expr_type: element_expr_type,
         sql: element_sql, aggregated:)
-    sql := "ARRAY[" + join(array<element_sql, order_by: [index]>, ", ") + "]"
+    sql := "ARRAY[" ++ join(array<element_sql, order_by: [index]>, ", ") ++ "]"
 */
 DECLARE RECURSIVE VIEW substituted_array_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT, aggregated BOOLEAN);
 CREATE MATERIALIZED VIEW substituted_array_expr AS
@@ -203,7 +202,7 @@ substituted_dict_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated: some<a
     dict_expr(pipeline_id:, rule_id:, expr_id:, dict_id:)
     dict_entry(pipeline_id:, rule_id:, dict_id:, key:, expr_id: value_expr_id, expr_type: value_expr_type)
     substituted_expr(pipeline_id:, rule_id:, expr_id: value_expr_id, expr_type: value_expr_type, sql: value_sql, aggregated:)
-    sql := "MAP[" + join(array<`'{{key}}', {{value_sql}}`>, ", ") + "]"
+    sql := "MAP[" ++ join(array<`'{{key}}', {{value_sql}}`>, ", ") ++ "]"
 */
 DECLARE RECURSIVE VIEW substituted_dict_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT, aggregated BOOLEAN);
 CREATE MATERIALIZED VIEW substituted_dict_expr AS
@@ -364,19 +363,36 @@ CREATE MATERIALIZED VIEW "error:match_right_expr_unresolved" AS
     );
 
 /*
-neg_goal_where_cond(pipeline_id:, rule_id:, goal_id:, sql:) <-
+neg_goal_where_cond(pipeline_id:, rule_id:, goal_id:, sql_lines:) <-
     goal_alias(pipeline_id:, rule_id:, goal_id:, alias:, table_name:, negated: true)
     goal_arg(pipeline_id:, rule_id:, goal_id:, key:, expr_id:, expr_type:)
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
-    cond_sql := join(array<`"{{alias}}"."{{key}}" = {{expr_sql}}`>, " AND ")
-    sql := `NOT EXISTS (SELECT 1 FROM "{{table_name}}" AS "{{alias}})" WHERE {{cond_sql}}`
+    [first_cond, *rest_cond] := array<`"{{alias}}"."{{key}}" = {{expr_sql}}`>
+    sql_lines := [
+        "NOT EXISTS (SELECT 1",
+        `FROM "{{table_name}}" AS "{{alias}}"`,
+        `WHERE {{first_cond}}`,
+        *map(rest_cond, x -> `AND {{x}}`),
+        ")",
+    ]
 */
 CREATE MATERIALIZED VIEW neg_goal_where_cond AS
     SELECT DISTINCT
         goal_alias.pipeline_id,
         goal_alias.rule_id,
         goal_alias.goal_id,
-        ('NOT EXISTS (SELECT 1 FROM "' || goal_alias.table_name || '" AS "' || goal_alias.alias || '" WHERE ' || ARRAY_TO_STRING(ARRAY_AGG(('"' || goal_alias.alias || '"."' || goal_arg.key || '" = ' || substituted_expr.sql)), ' AND ') || ')') AS sql
+        ARRAY_CONCAT(
+            ARRAY[
+                'NOT EXISTS (SELECT 1',
+                ('FROM "' || goal_alias.table_name || '" AS "' || goal_alias.alias || '"'),
+                ('WHERE ' || ARRAY_AGG('"' || goal_alias.alias || '"."' || goal_arg.key || '" = ' || substituted_expr.sql)[1])
+            ],
+            TRANSFORM(
+                TEXT_ARRAY_DROP_LEFT(
+                    ARRAY_AGG('"' || goal_alias.alias || '"."' || goal_arg.key || '" = ' || substituted_expr.sql),
+                    CAST(1 AS INTEGER UNSIGNED)),
+                x -> 'AND ' || x)
+        ) AS sql_lines
     FROM goal_alias
     JOIN goal_arg
         ON goal_alias.pipeline_id = goal_arg.pipeline_id
@@ -530,16 +546,12 @@ CREATE MATERIALIZED VIEW match_where_cond AS
         AND substituted_expr.rule_id = substituted_match_left_expr_with_right_expr.rule_id;
 
 /*
-where_cond(pipeline_id:, rule_id:, sql:) <-
+where_cond(pipeline_id:, rule_id:, sql_lines: [sql]) <-
     sql_where_cond(pipeline_id:, rule_id:, sql:)
-where_cond(pipeline_id:, rule_id:, sql:) <-
+where_cond(pipeline_id:, rule_id:, sql_lines: [sql]) <-
     match_where_cond(pipeline_id:, rule_id:, sql:)
-where_cond(pipeline_id:, rule_id:, sql:) <-
-    neg_goal_where_cond(pipeline_id:, rule_id:, sql:)
-
-aggregated_where_cond(pipeline_id:, rule_id:, cond_id:, sql:) <-
-    where_cond(pipeline_id:, rule_id:, sql:)
-    sql := join(array<sql>, " AND ")
+where_cond(pipeline_id:, rule_id:, sql_lines:) <-
+    neg_goal_where_cond(pipeline_id:, rule_id:, sql_lines:)
 */
 
 /*
@@ -565,44 +577,35 @@ CREATE MATERIALIZED VIEW var_join AS
     WHERE canonical_goal_var_sql.goal_index < var_bound_in_goal.goal_index;
 
 /*
-join_cond_sql(pipeline_id:, rule_id:, goal_id:, sql:) <-
-    var_join(pipeline_id:, rule_id:, goal_id:, sql: var_join_sql)
-    sql := join(array<var_join_sql>, " AND ")
-*/
-CREATE MATERIALIZED VIEW join_cond_sql AS
-    SELECT DISTINCT
-        var_join.pipeline_id,
-        var_join.rule_id,
-        var_join.goal_id,
-        ARRAY_TO_STRING(ARRAY_AGG(var_join.sql), ' AND ') AS sql
-    FROM var_join
-    GROUP BY var_join.pipeline_id, var_join.rule_id, var_join.goal_id;
-
-/*
-rule_join_sql(pipeline_id:, rule_id:, goal_id:, sql:) <-
+rule_join_sql(pipeline_id:, rule_id:, goal_id:, sql_lines:) <-
     first_goal_alias(pipeline_id:, rule_id:, goal_id:, table_name:, alias:, negated: false)
-    sql := `FROM "{{table_name}}" AS "{{alias}}"`
-rule_join_sql(pipeline_id:, rule_id:, goal_id:, sql:) <-
-    rule_join_sql(pipeline_id:, rule_id:, goal_id: prev_goal_id, sql: prev_sql)
+    sql_lines := [`FROM "{{table_name}}" AS "{{alias}}"`]
+rule_join_sql(pipeline_id:, rule_id:, goal_id:, sql_lines:) <-
+    rule_join_sql(pipeline_id:, rule_id:, goal_id: prev_goal_id, sql_lines: prev_sql_lines)
     adjacent_goals(pipeline_id:, rule_id:, prev_goal_id:, next_goal_id:)
     goal_alias(pipeline_id:, rule_id:, table_name:, goal_id: next_goal_id, alias: next_alias)
-    not join_cond_sql(pipeline_id:, rule_id:, goal_id: next_goal_id)
-    sql := `{{prev_sql}} CROSS JOIN "{{table_name}}" AS "{{next_alias}}"`
-rule_join_sql(pipeline_id:, rule_id:, goal_id:, sql:) <-
-    rule_join_sql(pipeline_id:, rule_id:, goal_id: prev_goal_id, sql: prev_sql)
+    not var_join(pipeline_id:, rule_id:, goal_id: next_goal_id)
+    sql_lines := [*prev_sql_lines, `CROSS JOIN "{{table_name}}" AS "{{next_alias}}"`]
+rule_join_sql(pipeline_id:, rule_id:, goal_id: next_goal_id, sql_lines:) <-
+    rule_join_sql(pipeline_id:, rule_id:, goal_id: prev_goal_id, sql_lines: prev_sql_lines)
     adjacent_goals(pipeline_id:, rule_id:, prev_goal_id:, next_goal_id:)
     goal_alias(pipeline_id:, rule_id:, table_name:, goal_id: next_goal_id, alias: next_alias)
-    join_cond_sql(pipeline_id:, rule_id:, goal_id: next_goal_id, sql: join_cond_sql)
-    goal_id := next_goal_id
-    sql := `{{prev_sql}} JOIN "{{table_name}}" AS "{{next_alias}}" ON {{join_cond_sql}}`
+    var_join(pipeline_id:, rule_id:, goal_id: next_goal_id, sql:)
+    [first_cond, *rest_conds] := array<sql>
+    sql_lines := [
+        *prev_sql_lines,
+        `JOIN "{{table_name}}" AS "{{next_alias}}"`,
+        `ON {{first_cond}}`,
+        *map(rest_conds, x -> `AND {{x}}`),
+    ]
 */
-DECLARE RECURSIVE VIEW rule_join_sql (pipeline_id TEXT, rule_id TEXT, goal_id TEXT, sql TEXT);
+DECLARE RECURSIVE VIEW rule_join_sql (pipeline_id TEXT, rule_id TEXT, goal_id TEXT, sql_lines TEXT ARRAY);
 CREATE MATERIALIZED VIEW rule_join_sql AS
     SELECT DISTINCT
         first_goal_alias.pipeline_id,
         first_goal_alias.rule_id,
         first_goal_alias.goal_id,
-        ('  FROM "' || first_goal_alias.table_name || '" AS "' || first_goal_alias.alias || '"') AS sql
+        ARRAY['  FROM "' || first_goal_alias.table_name || '" AS "' || first_goal_alias.alias || '"'] AS sql_lines
     FROM first_goal_alias
     WHERE NOT first_goal_alias.negated
     
@@ -612,7 +615,9 @@ CREATE MATERIALIZED VIEW rule_join_sql AS
         next_goal_alias.pipeline_id,
         next_goal_alias.rule_id,
         next_goal_alias.goal_id,
-        (prev_rule_join_sql.sql || ' CROSS JOIN "' || next_goal_alias.table_name || '" AS "' || next_goal_alias.alias || '"') AS sql
+        ARRAY_CONCAT(
+            prev_rule_join_sql.sql_lines,
+            ARRAY['CROSS JOIN "' || next_goal_alias.table_name || '" AS "' || next_goal_alias.alias || '"']) AS sql_lines
     FROM rule_join_sql AS prev_rule_join_sql
     JOIN adjacent_goals
         ON prev_rule_join_sql.pipeline_id = adjacent_goals.pipeline_id
@@ -624,10 +629,10 @@ CREATE MATERIALIZED VIEW rule_join_sql AS
         AND adjacent_goals.next_goal_id = next_goal_alias.goal_id
     WHERE NOT EXISTS (
         SELECT 1
-        FROM join_cond_sql
-        WHERE prev_rule_join_sql.pipeline_id = join_cond_sql.pipeline_id
-        AND prev_rule_join_sql.rule_id = join_cond_sql.rule_id
-        AND prev_rule_join_sql.goal_id = join_cond_sql.goal_id)
+        FROM var_join
+        WHERE prev_rule_join_sql.pipeline_id = var_join.pipeline_id
+        AND prev_rule_join_sql.rule_id = var_join.rule_id
+        AND prev_rule_join_sql.goal_id = var_join.goal_id)
 
     UNION
 
@@ -635,7 +640,16 @@ CREATE MATERIALIZED VIEW rule_join_sql AS
         next_goal_alias.pipeline_id,
         next_goal_alias.rule_id,
         next_goal_alias.goal_id,
-        (prev_rule_join_sql.sql || ' JOIN "' || next_goal_alias.table_name || '" AS "' || next_goal_alias.alias || '" ON ' || join_cond_sql.sql || ')') AS sql
+        ARRAY_CONCAT(
+            prev_rule_join_sql.sql_lines,
+            ARRAY['JOIN "' || next_goal_alias.table_name || '" AS "' || next_goal_alias.alias || '"'],
+            ARRAY['ON ' || ARRAY_AGG(var_join.sql)[1]],
+            TRANSFORM(
+                TEXT_ARRAY_DROP_LEFT(
+                    ARRAY_AGG(var_join.sql),
+                    CAST(1 AS INTEGER UNSIGNED)),
+                x -> 'AND ' || x)
+        ) AS sql_lines
     FROM rule_join_sql AS prev_rule_join_sql
     JOIN adjacent_goals
         ON prev_rule_join_sql.pipeline_id = adjacent_goals.pipeline_id
@@ -645,10 +659,11 @@ CREATE MATERIALIZED VIEW rule_join_sql AS
         ON adjacent_goals.pipeline_id = next_goal_alias.pipeline_id
         AND adjacent_goals.rule_id = next_goal_alias.rule_id
         AND adjacent_goals.next_goal_id = next_goal_alias.goal_id
-    JOIN join_cond_sql
-        ON next_goal_alias.pipeline_id = join_cond_sql.pipeline_id
-        AND next_goal_alias.rule_id = join_cond_sql.rule_id
-        AND next_goal_alias.goal_id = join_cond_sql.goal_id;
+    JOIN var_join
+        ON next_goal_alias.pipeline_id = var_join.pipeline_id
+        AND next_goal_alias.rule_id = var_join.rule_id
+        AND next_goal_alias.goal_id = var_join.goal_id
+    GROUP BY next_goal_alias.pipeline_id, next_goal_alias.rule_id, next_goal_alias.goal_id, prev_rule_join_sql.sql_lines, next_goal_alias.table_name, next_goal_alias.alias;
 
 /*
 unaggregated_param_expr(pipeline_id:, rule_id:, key:, expr_id:, expr_type:, sql:) <-
@@ -686,18 +701,17 @@ CREATE MATERIALIZED VIEW grouped_by_sql AS
     GROUP BY unaggregated_param_expr.pipeline_id, unaggregated_param_expr.rule_id;
 
 /*
-join_sql(pipeline_id:, rule_id:, sql:) <-
+join_sql(pipeline_id:, rule_id:, sql_lines:) <-
     # pick the last goal_id, for which there is no next one
     adjacent_goals(pipeline_id:, rule_id:, next_goal_id: last_goal_id)
     not adjacent_goals(pipeline_id:, rule_id:, prev_goal_id: last_goal_id)
-
-    rule_join_sql(pipeline_id:, rule_id:, goal_id: last_goal_id, sql:)
+    rule_join_sql(pipeline_id:, rule_id:, goal_id: last_goal_id, sql_lines:)
 */
 CREATE MATERIALIZED VIEW join_sql AS
     SELECT DISTINCT
         rule_join_sql.pipeline_id,
         rule_join_sql.rule_id,
-        rule_join_sql.sql
+        rule_join_sql.sql_lines
     FROM rule_join_sql
     JOIN adjacent_goals AS a
         ON rule_join_sql.pipeline_id = a.pipeline_id
@@ -711,19 +725,28 @@ CREATE MATERIALIZED VIEW join_sql AS
         AND adjacent_goals.prev_goal_id = a.next_goal_id);
 
 /*
-select_sql(pipeline_id:, rule_id:, sql:) <-
+select_sql(pipeline_id:, rule_id:, sql_lines:) <-
     rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
     grouped_by_sql(pipeline_id:, rule_id:, sql: group_by_sql)
-    join_sql(pipeline_id:, rule_id:, sql: join_sql)
+    join_sql(pipeline_id:, rule_id:, sql_lines: join_sql_lines)
     columns_sql := join(array<`{{expr_sql}} AS "{{key}}"`>, ", ")
-    sql := `SELECT {{columns_sql}} {{join_sql}} {{group_by_sql}}`
+    sql_lines := [
+        `SELECT DISTINCT {{columns_sql}}`,
+        *join_sql_lines,
+        group_by_sql,
+    ]
 */
 CREATE MATERIALIZED VIEW select_sql AS
     SELECT DISTINCT
         rule_param.pipeline_id,
         rule_param.rule_id,
-        ('SELECT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_expr.sql || ' AS "' || rule_param.key || '"'), ', ') || ' ' || join_sql.sql || ' ' || grouped_by_sql.sql) AS sql
+        ARRAY_CONCAT(
+            ARRAY['SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_expr.sql || ' AS "' || rule_param.key || '"'), ', ')],
+            join_sql.sql_lines,
+            ARRAY[grouped_by_sql.sql]
+        ) AS sql_lines
+        -- ('SELECT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_expr.sql || ' AS "' || rule_param.key || '"'), ', ') || ' ' || join_sql.sql || ' ' || grouped_by_sql.sql) AS sql
     FROM rule_param
     JOIN substituted_expr
         ON rule_param.pipeline_id = substituted_expr.pipeline_id
@@ -736,4 +759,4 @@ CREATE MATERIALIZED VIEW select_sql AS
     JOIN join_sql
         ON rule_param.pipeline_id = join_sql.pipeline_id
         AND rule_param.rule_id = join_sql.rule_id
-    GROUP BY rule_param.pipeline_id, rule_param.rule_id, join_sql.sql, grouped_by_sql.sql;
+    GROUP BY rule_param.pipeline_id, rule_param.rule_id, join_sql.sql_lines, grouped_by_sql.sql;
