@@ -1,0 +1,52 @@
+start: (_WS? (rule | fact) _WS?)*
+
+rule: prefixed_rule | rule0
+
+ptask: "task"
+pconflict: "conflict"
+pchoice: "choice"
+prefixed_rule: (ptask|pconflict|pchoice) _WS_INLINE rule0 
+
+rule0: identifier args? _WS_INLINE "<-" _WS? assertions_joined_with_comma _WS? "."
+fact: identifier literal_args? _WS? "."
+
+assertions_joined_with_comma: (assertion _WS? "," _WS?)* assertion
+
+args: "(" _WS? args_joined_with_comma? _WS? ")"
+
+args_joined_with_comma: (arg _WS? "," _WS?)* arg
+
+arg: identifier ":" _WS? value
+    | identifier ":"
+
+literal_args: "(" _WS? literal_args_joined_with_comma? _WS? ")"
+literal_args_joined_with_comma: (larg _WS? "," _WS?)* larg
+larg: identifier ":" _WS_INLINE? literal
+
+literal: string | number
+value: literal | identifier | aggvalue
+aggvalue: identifier "<" _WS_INLINE? (identifier _WS_INLINE?)? ">"
+
+assertion: goal | neg_goal | prefixed_goal | binop
+goal: identifier args? fact_id?
+neg_goal: "not" _WS_INLINE identifier args? fact_id?
+prefixed_goal: (ptask|pchoice) _WS_INLINE identifier args? fact_id?
+fact_id: "#" identifier
+
+binop: value _WS_INLINE? (lt | lte | e | gt | gte) _WS_INLINE? value
+lt: "<"
+lte: "<="
+e: "="
+gt: ">"
+gte: ">="
+
+IDENTIFIER: LETTER ("_"|LETTER|DIGIT)*
+
+string: ESCAPED_STRING
+identifier: IDENTIFIER
+number: NUMBER
+
+_WS: WS
+_WS_INLINE: WS_INLINE
+
+%import common (LETTER, DIGIT, NUMBER, ESCAPED_STRING, WS, WS_INLINE)

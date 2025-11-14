@@ -1,0 +1,30 @@
+start: (_WS* rule _NEWLINE?)*
+
+rule: id args? _WS_INLINE* "<-" _WS_INLINE* _NEWLINE multiline_body
+    | id args? _WS_INLINE* "<-" _WS_INLINE* oneline_body
+    | id args?
+
+args: "(" _WS_INLINE* ")"
+    | "(" _WS_INLINE* arg (_WS_INLINE* "," _WS_INLINE* arg)* _WS_INLINE* ")"
+arg: id ":"
+    | id ":" _WS_INLINE+ expr
+
+oneline_body: body_stmt
+multiline_body: (INDENT body_stmt _WS_INLINE* _NEWLINE)+
+body_stmt: goal
+goal: ("not" _WS_INLINE+)? id args?
+
+expr: id | number | string
+
+id: IDENTIFIER
+number: NUMBER
+string: ESCAPED_STRING
+
+IDENTIFIER: LETTER ("_"|LETTER|DIGIT)* (":" LETTER ("_"|LETTER|DIGIT)*)?
+
+INDENT: WS_INLINE+
+_WS: WS
+_WS_INLINE: WS_INLINE
+_NEWLINE: NEWLINE
+
+%import common (LETTER, DIGIT, NUMBER, ESCAPED_STRING, WS, WS_INLINE, NEWLINE)
