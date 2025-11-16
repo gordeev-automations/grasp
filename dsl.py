@@ -10,14 +10,14 @@ null = Const.NULL
 
 
 
-def rule(table_name, params, body, materialized=False):
-    return {'type': 'rule', 'table_name': table_name, 'params': params, 'body': body, 'materialized': materialized}
+def rule(table_name, params, body):
+    return {'type': 'rule', 'table_name': table_name, 'params': params, 'body': body}
 
-def goal(table_name, *args, id=None):
-    return {'type': 'goal', 'table_name': table_name, 'args': list(args), 'id': id, 'negated': False}
+def fact(table_name, *args):
+    return {'type': 'fact', 'table_name': table_name, 'args': list(args), 'negated': False}
 
-def neg_goal(table_name, *args):
-    return {'type': 'goal', 'table_name': table_name, 'args': list(args), 'id': None, 'negated': True}
+def neg_fact(table_name, *args):
+    return {'type': 'fact', 'table_name': table_name, 'args': list(args), 'negated': True}
 
 def sql_cond(template):
     return {'type': 'sql_cond', 'template': template}
@@ -251,7 +251,7 @@ def param_to_record(param, pipeline_id, rule_id):
         case _:
             raise Exception(f"Invalid param {param}")
 
-def goal_arg_to_records(arg, goal_id, pipeline_id, rule_id):
+def fact_arg_to_records(arg, fact_id, pipeline_id, rule_id):
     match arg:
         case _ if type(arg) == str:
             expr_id = gen_random_id()
@@ -262,10 +262,10 @@ def goal_arg_to_records(arg, goal_id, pipeline_id, rule_id):
                     'expr_id': expr_id,
                     'var_name': arg,
                 }],
-                'goal_arg': [{
+                'fact_arg': [{
                     'pipeline_id': pipeline_id,
                     'rule_id': rule_id,
-                    'goal_id': goal_id,
+                    'fact_id': fact_id,
                     'key': arg,
                     'expr_id': expr_id,
                     'expr_type': 'var_expr',
@@ -274,35 +274,34 @@ def goal_arg_to_records(arg, goal_id, pipeline_id, rule_id):
         case (key, expr):
             records, expr_id, expr_type = expr_to_records(expr, pipeline_id, rule_id)
             return merge_records(records, {
-                'goal_arg': [{
+                'fact_arg': [{
                     'pipeline_id': pipeline_id,
                     'rule_id': rule_id,
-                    'goal_id': goal_id,
+                    'fact_id': fact_id,
                     'key': key,
                     'expr_id': expr_id,
                     'expr_type': expr_type,
                 }]
             })
         case _:
-            raise Exception(f"Invalid goal arg {arg}")
+            raise Exception(f"Invalid fact arg {arg}")
 
 def body_stmt_to_record(index, body_stmt, pipeline_id, rule_id):
     match body_stmt:
-        case {'type': 'goal', 'table_name': table_name, 'args': args, 'id': id, 'negated': negated}:
+        case {'type': 'fact', 'table_name': table_name, 'args': args, 'negated': negated}:
             records = {}
-            goal_id = gen_random_id()
+            fact_id = gen_random_id()
             for arg in args:
-                records0 = goal_arg_to_records(arg, goal_id, pipeline_id, rule_id)
+                records0 = fact_arg_to_records(arg, fact_id, pipeline_id, rule_id)
                 records = merge_records(records, records0)
             return merge_records(records, {
-                'body_goal': [{
+                'body_fact': [{
                     'pipeline_id': pipeline_id,
                     'rule_id': rule_id,
-                    'goal_id': goal_id,
+                    'fact_id': fact_id,
                     'index': index+1,
                     'table_name': table_name,
                     'negated': negated,
-                    'id_var': id,
                 }]
             })
         case {'type': 'sql_cond', 'template': template}:
@@ -343,7 +342,7 @@ def body_stmt_to_record(index, body_stmt, pipeline_id, rule_id):
 
 def rule_to_record(rule, pipeline_id):
     match rule:
-        case {'type': 'rule', 'table_name': table_name, 'params': params, 'body': body, 'materialized': materialized}:
+        case {'type': 'rule', 'table_name': table_name, 'params': params, 'body': body}:
             rule_id = gen_random_id()
             records = {}
             for param in params:
@@ -357,7 +356,6 @@ def rule_to_record(rule, pipeline_id):
                     'pipeline_id': pipeline_id,
                     'rule_id': rule_id,
                     'table_name': table_name,
-                    'materialized': materialized,
                 }]
             })
         case _:

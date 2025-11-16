@@ -1,52 +1,25 @@
-start: (_WS? (rule | fact) _WS?)*
+start: (_WS* rule _NEWLINE?)*
 
-rule: prefixed_rule | rule0
+rule: IDENTIFIER args? _WS_INLINE* "<-" _WS_INLINE* _NEWLINE multiline_body
+    | IDENTIFIER args? _WS_INLINE* "<-" _WS_INLINE* body_stmt
+    | IDENTIFIER args?
 
-ptask: "task"
-pconflict: "conflict"
-pchoice: "choice"
-prefixed_rule: (ptask|pconflict|pchoice) _WS_INLINE rule0 
+args: "(" _WS_INLINE* ")"
+    | "(" _WS_INLINE* arg (_WS_INLINE* "," _WS_INLINE* arg)* _WS_INLINE* ")"
+arg: IDENTIFIER ":"
+    | IDENTIFIER ":" _WS_INLINE+ expr
 
-rule0: identifier args? _WS_INLINE "<-" _WS? assertions_joined_with_comma _WS? "."
-fact: identifier literal_args? _WS? "."
+multiline_body: (_INDENT body_stmt _WS_INLINE* _NEWLINE)+
+body_stmt: fact
+fact: ("not" _WS_INLINE+)? IDENTIFIER args?
 
-assertions_joined_with_comma: (assertion _WS? "," _WS?)* assertion
+expr: IDENTIFIER -> var | NUMBER | ESCAPED_STRING
 
-args: "(" _WS? args_joined_with_comma? _WS? ")"
+IDENTIFIER: LETTER ("_"|LETTER|DIGIT)* (":" LETTER ("_"|LETTER|DIGIT)*)?
 
-args_joined_with_comma: (arg _WS? "," _WS?)* arg
-
-arg: identifier ":" _WS? value
-    | identifier ":"
-
-literal_args: "(" _WS? literal_args_joined_with_comma? _WS? ")"
-literal_args_joined_with_comma: (larg _WS? "," _WS?)* larg
-larg: identifier ":" _WS_INLINE? literal
-
-literal: string | number
-value: literal | identifier | aggvalue
-aggvalue: identifier "<" _WS_INLINE? (identifier _WS_INLINE?)? ">"
-
-assertion: goal | neg_goal | prefixed_goal | binop
-goal: identifier args? fact_id?
-neg_goal: "not" _WS_INLINE identifier args? fact_id?
-prefixed_goal: (ptask|pchoice) _WS_INLINE identifier args? fact_id?
-fact_id: "#" identifier
-
-binop: value _WS_INLINE? (lt | lte | e | gt | gte) _WS_INLINE? value
-lt: "<"
-lte: "<="
-e: "="
-gt: ">"
-gte: ">="
-
-IDENTIFIER: LETTER ("_"|LETTER|DIGIT)*
-
-string: ESCAPED_STRING
-identifier: IDENTIFIER
-number: NUMBER
-
+_INDENT: "\t"
 _WS: WS
 _WS_INLINE: WS_INLINE
+_NEWLINE: NEWLINE
 
-%import common (LETTER, DIGIT, NUMBER, ESCAPED_STRING, WS, WS_INLINE)
+%import common (LETTER, DIGIT, NUMBER, ESCAPED_STRING, WS, WS_INLINE, NEWLINE)

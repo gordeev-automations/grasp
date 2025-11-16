@@ -31,8 +31,7 @@ CREATE TABLE schema_table_archive_pg (
 CREATE TABLE rule (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
-    table_name TEXT NOT NULL,
-    "materialized" BOOLEAN NOT NULL
+    table_name TEXT NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE rule_param (
@@ -111,20 +110,19 @@ CREATE TABLE array_entry (
     expr_type TEXT NOT NULL
 ) WITH ('materialized' = 'true');
 
-CREATE TABLE body_goal (
+CREATE TABLE body_fact (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
-    goal_id TEXT NOT NULL,
+    fact_id TEXT NOT NULL,
     "index" INTEGER NOT NULL,
     table_name TEXT NOT NULL,
-    negated BOOLEAN NOT NULL,
-    id_var TEXT
+    negated BOOLEAN NOT NULL
 ) WITH ('materialized' = 'true');
 
-CREATE TABLE goal_arg (
+CREATE TABLE fact_arg (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
-    goal_id TEXT NOT NULL,
+    fact_id TEXT NOT NULL,
     "key" TEXT NOT NULL,
     expr_id TEXT NOT NULL,
     expr_type TEXT NOT NULL

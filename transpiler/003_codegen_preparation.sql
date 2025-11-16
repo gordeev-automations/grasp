@@ -1,7 +1,7 @@
 /*
 table_dependency(pipeline_id:, table_name:, parent_table_name:) <-
     rule(pipeline_id:, table_name:, rule_id:)
-    body_goal(pipeline_id:, rule_id:, table_name: parent_table_name)
+    body_fact(pipeline_id:, rule_id:, table_name: parent_table_name)
 table_dependency(pipeline_id:, table_name:, parent_table_name:) <-
     table_dependency(pipeline_id:, table_name:, parent_table_name:)
     table_dependency(pipeline_id:, table_name: parent_table_name, parent_table_name:)
@@ -11,11 +11,11 @@ CREATE MATERIALIZED VIEW table_dependency AS
     SELECT DISTINCT
         rule.pipeline_id,
         rule.table_name,
-        body_goal.table_name AS parent_table_name
+        body_fact.table_name AS parent_table_name
     FROM rule
-    JOIN body_goal
-        ON rule.pipeline_id = body_goal.pipeline_id
-        AND rule.rule_id = body_goal.rule_id
+    JOIN body_fact
+        ON rule.pipeline_id = body_fact.pipeline_id
+        AND rule.rule_id = body_fact.rule_id
     
     UNION
     
@@ -181,62 +181,62 @@ CREATE MATERIALIZED VIEW next_table AS
     GROUP BY next_table.pipeline_id, next_table.next_table_name, next_table."order";
 
 /*
-goal_alias(pipeline_id:, rule_id:, table_name:, alias:, negated:, goal_index:) <-
-    body_goal(pipeline_id:, rule_id:, goal_id:, table_name:, negated:, index: goal_index)
-    alias := `{{goal_id}}:{{table_name}}` 
+fact_alias(pipeline_id:, rule_id:, table_name:, alias:, negated:, fact_index:) <-
+    body_fact(pipeline_id:, rule_id:, fact_id:, table_name:, negated:, index: fact_index)
+    alias := `{{fact_id}}:{{table_name}}` 
 */
-CREATE MATERIALIZED VIEW goal_alias AS
+CREATE MATERIALIZED VIEW fact_alias AS
     SELECT DISTINCT
-        body_goal.pipeline_id,
-        body_goal.rule_id,
-        body_goal.goal_id,
-        body_goal."index" AS goal_index,
-        body_goal.table_name,
-        body_goal.negated,
-        (body_goal.goal_id || ':' || body_goal.table_name) AS alias
-    FROM body_goal;
+        body_fact.pipeline_id,
+        body_fact.rule_id,
+        body_fact.fact_id,
+        body_fact."index" AS fact_index,
+        body_fact.table_name,
+        body_fact.negated,
+        (body_fact.fact_id || ':' || body_fact.table_name) AS alias
+    FROM body_fact;
 
 /*
-first_goal_alias(
-    pipeline_id:, rule_id:, table_name: argmin<table_name, goal_index>, alias: argmin<alias, goal_index>,
-    negated:, goal_index: min<goal_index>
+first_fact_alias(
+    pipeline_id:, rule_id:, table_name: argmin<table_name, fact_index>, alias: argmin<alias, fact_index>,
+    negated:, fact_index: min<fact_index>
 ) <-
-    goal_alias(pipeline_id:, rule_id:, table_name:, alias:, negated:, goal_index:)
+    fact_alias(pipeline_id:, rule_id:, table_name:, alias:, negated:, fact_index:)
 */
-CREATE MATERIALIZED VIEW first_goal_alias AS
+CREATE MATERIALIZED VIEW first_fact_alias AS
     SELECT DISTINCT
-        goal_alias.pipeline_id,
-        goal_alias.rule_id,
-        ARG_MIN(goal_alias.goal_id, goal_alias.goal_index) AS goal_id,
-        ARG_MIN(goal_alias.table_name, goal_alias.goal_index) AS table_name,
-        ARG_MIN(goal_alias.alias, goal_alias.goal_index) AS alias,
-        goal_alias.negated,
-        MIN(goal_alias.goal_index) AS goal_index
-    FROM goal_alias
-    GROUP BY goal_alias.pipeline_id, goal_alias.rule_id, goal_alias.negated;
+        fact_alias.pipeline_id,
+        fact_alias.rule_id,
+        ARG_MIN(fact_alias.fact_id, fact_alias.fact_index) AS fact_id,
+        ARG_MIN(fact_alias.table_name, fact_alias.fact_index) AS table_name,
+        ARG_MIN(fact_alias.alias, fact_alias.fact_index) AS alias,
+        fact_alias.negated,
+        MIN(fact_alias.fact_index) AS fact_index
+    FROM fact_alias
+    GROUP BY fact_alias.pipeline_id, fact_alias.rule_id, fact_alias.negated;
 
 /*
-adjacent_goals(
-    pipeline_id:, rule_id:, negated:, prev_goal_id:, next_goal_id: argmin<next_goal_id, next_goal_index>
+adjacent_facts(
+    pipeline_id:, rule_id:, negated:, prev_fact_id:, next_fact_id: argmin<next_fact_id, next_fact_index>
 ) <-
-    goal_alias(pipeline_id:, rule_id:, goal_id: prev_goal_id, negated:, goal_index: prev_goal_index)
-    goal_alias(pipeline_id:, rule_id:, goal_id: next_goal_id, negated:, goal_index: next_goal_index)
-    prev_goal_index < next_goal_index
+    fact_alias(pipeline_id:, rule_id:, fact_id: prev_fact_id, negated:, fact_index: prev_fact_index)
+    fact_alias(pipeline_id:, rule_id:, fact_id: next_fact_id, negated:, fact_index: next_fact_index)
+    prev_fact_index < next_fact_index
 */
-CREATE MATERIALIZED VIEW adjacent_goals AS
+CREATE MATERIALIZED VIEW adjacent_facts AS
     SELECT DISTINCT
-        prev_goal.pipeline_id,
-        prev_goal.rule_id,
-        prev_goal.negated,
-        prev_goal.goal_id AS prev_goal_id,
-        ARG_MIN(next_goal.goal_id, next_goal.goal_index) AS next_goal_id
-    FROM goal_alias AS prev_goal
-    JOIN goal_alias AS next_goal
-        ON prev_goal.pipeline_id = next_goal.pipeline_id
-        AND prev_goal.rule_id = next_goal.rule_id
-        AND prev_goal.negated = next_goal.negated
-    WHERE prev_goal.goal_index < next_goal.goal_index
-    GROUP BY prev_goal.pipeline_id, prev_goal.rule_id, prev_goal.negated, prev_goal.goal_id;
+        prev_fact.pipeline_id,
+        prev_fact.rule_id,
+        prev_fact.negated,
+        prev_fact.fact_id AS prev_fact_id,
+        ARG_MIN(next_fact.fact_id, next_fact.fact_index) AS next_fact_id
+    FROM fact_alias AS prev_fact
+    JOIN fact_alias AS next_fact
+        ON prev_fact.pipeline_id = next_fact.pipeline_id
+        AND prev_fact.rule_id = next_fact.rule_id
+        AND prev_fact.negated = next_fact.negated
+    WHERE prev_fact.fact_index < next_fact.fact_index
+    GROUP BY prev_fact.pipeline_id, prev_fact.rule_id, prev_fact.negated, prev_fact.fact_id;
 
 /*
 table_first_rule(pipeline_id:, table_name:, rule_id: min<rule_id>) <-
@@ -442,52 +442,52 @@ CREATE MATERIALIZED VIEW var_mentioned_in_expr AS
         AND dict_entry.expr_type = var_mentioned_in_expr.expr_type;
 
 /*
-var_bound_in_goal(pipeline_id:, rule_id:, goal_id:, key:, negated:, var_name:, goal_index:, sql:) <-
-    goal_arg(pipeline_id:, goal_id:, expr_id:, expr_type:)
+var_bound_in_fact(pipeline_id:, rule_id:, fact_id:, key:, negated:, var_name:, fact_index:, sql:) <-
+    fact_arg(pipeline_id:, fact_id:, expr_id:, expr_type:)
     var_mentioned_in_expr(pipeline_id:, expr_id:, expr_type:, var_name:)
-    goal_alias(pipeline_id:, rule_id:, goal_id:, negated:, goal_index:)
+    fact_alias(pipeline_id:, rule_id:, fact_id:, negated:, fact_index:)
     sql := `"{{alias}}"."{{key}}"{{access_prefix}}`
 */
-CREATE MATERIALIZED VIEW var_bound_in_goal AS
+CREATE MATERIALIZED VIEW var_bound_in_fact AS
     SELECT DISTINCT
-        goal_arg.pipeline_id,
-        goal_alias.rule_id,
-        goal_arg.goal_id,
-        goal_arg.key,
-        goal_alias.negated,
-        goal_alias.goal_index,
+        fact_arg.pipeline_id,
+        fact_alias.rule_id,
+        fact_arg.fact_id,
+        fact_arg.key,
+        fact_alias.negated,
+        fact_alias.fact_index,
         var_mentioned_in_expr.var_name,
-        ('"' || goal_alias.alias || '"."' || goal_arg.key || '"' || var_mentioned_in_expr.access_prefix) AS sql
-    FROM goal_arg
+        ('"' || fact_alias.alias || '"."' || fact_arg.key || '"' || var_mentioned_in_expr.access_prefix) AS sql
+    FROM fact_arg
     JOIN var_mentioned_in_expr
-        ON goal_arg.pipeline_id = var_mentioned_in_expr.pipeline_id
-        AND goal_arg.expr_id = var_mentioned_in_expr.expr_id
-        AND goal_arg.expr_type = var_mentioned_in_expr.expr_type
-    JOIN goal_alias
-        ON goal_arg.pipeline_id = goal_alias.pipeline_id
-        AND goal_arg.goal_id = goal_alias.goal_id;
+        ON fact_arg.pipeline_id = var_mentioned_in_expr.pipeline_id
+        AND fact_arg.expr_id = var_mentioned_in_expr.expr_id
+        AND fact_arg.expr_type = var_mentioned_in_expr.expr_type
+    JOIN fact_alias
+        ON fact_arg.pipeline_id = fact_alias.pipeline_id
+        AND fact_arg.fact_id = fact_alias.fact_id;
 
 /*
-canonical_goal_var_sql(pipeline_id:, rule_id:, var_name:, sql: argmin<sql, goal_index>, goal_index: min<goal_index>) <-
-    var_bound_in_goal(pipeline_id:, rule_id:, var_name:, negated: false, sql:, goal_index:)
+canonical_fact_var_sql(pipeline_id:, rule_id:, var_name:, sql: argmin<sql, fact_index>, fact_index: min<fact_index>) <-
+    var_bound_in_fact(pipeline_id:, rule_id:, var_name:, negated: false, sql:, fact_index:)
 */
-CREATE MATERIALIZED VIEW canonical_goal_var_sql AS
+CREATE MATERIALIZED VIEW canonical_fact_var_sql AS
     SELECT DISTINCT
-        var_bound_in_goal.pipeline_id,
-        var_bound_in_goal.rule_id,
-        var_bound_in_goal.var_name,
-        MIN(var_bound_in_goal.goal_index) AS goal_index,
-        ARG_MIN(var_bound_in_goal.sql, var_bound_in_goal.goal_index) AS sql
-    FROM var_bound_in_goal
-    WHERE NOT var_bound_in_goal.negated
-    GROUP BY var_bound_in_goal.pipeline_id, var_bound_in_goal.rule_id, var_bound_in_goal.var_name;
+        var_bound_in_fact.pipeline_id,
+        var_bound_in_fact.rule_id,
+        var_bound_in_fact.var_name,
+        MIN(var_bound_in_fact.fact_index) AS fact_index,
+        ARG_MIN(var_bound_in_fact.sql, var_bound_in_fact.fact_index) AS sql
+    FROM var_bound_in_fact
+    WHERE NOT var_bound_in_fact.negated
+    GROUP BY var_bound_in_fact.pipeline_id, var_bound_in_fact.rule_id, var_bound_in_fact.var_name;
 
 /*
 match_var_dependency(pipeline_id:, rule_id:, var_name:, parent_var_name:) <-
     body_match(pipeline_id:, rule_id:, match_id:, left_expr_id:, left_expr_type:, right_expr_id:, right_expr_type:)
     var_mentioned_in_expr(pipeline_id:, expr_id: left_expr_id, expr_type: left_expr_type, var_name:)
     var_mentioned_in_expr(pipeline_id:, expr_id: right_expr_id, expr_type: right_expr_type, var_name: parent_var_name)
-    not var_bound_in_goal(pipeline_id:, rule_id:, var_name:, negated: false)
+    not var_bound_in_fact(pipeline_id:, rule_id:, var_name:, negated: false)
 match_var_dependency(pipeline_id:, rule_id:, var_name:, parent_var_name:) <-
     match_var_dependency(pipeline_id:, rule_id:, var_name:, parent_var_name: middle_var_name)
     match_var_dependency(pipeline_id:, rule_id:, var_name: middle_var_name, parent_var_name:)
@@ -510,11 +510,11 @@ CREATE MATERIALIZED VIEW match_var_dependency AS
         AND body_match.right_expr_type = r.expr_type
     WHERE NOT EXISTS (
         SELECT 1
-        FROM var_bound_in_goal
-        WHERE var_bound_in_goal.pipeline_id = body_match.pipeline_id
-        AND var_bound_in_goal.rule_id = body_match.rule_id
-        AND var_bound_in_goal.var_name = l.var_name
-        AND NOT var_bound_in_goal.negated)
+        FROM var_bound_in_fact
+        WHERE var_bound_in_fact.pipeline_id = body_match.pipeline_id
+        AND var_bound_in_fact.rule_id = body_match.rule_id
+        AND var_bound_in_fact.var_name = l.var_name
+        AND NOT var_bound_in_fact.negated)
 
     UNION
 
