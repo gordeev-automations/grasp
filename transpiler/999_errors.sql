@@ -44,3 +44,22 @@ CREATE MATERIALIZED VIEW "error:neg_goal_sql_unresolved" AS
         AND rule_id = goal_arg.rule_id
         AND expr_id = goal_arg.expr_id
         AND expr_type = goal_arg.expr_type);
+
+/*
+error(pipeline_id:, error_type: "unbound_var_in_negative_goal") <-
+    error:unbound_var_in_negative_goal(pipeline_id:)
+error(pipeline_id:, error_type: "neg_goal_sql_unresolved") <-
+    error:neg_goal_sql_unresolved(pipeline_id:)
+*/
+CREATE MATERIALIZED VIEW "error" AS
+    SELECT DISTINCT
+        "error:unbound_var_in_negative_goal".pipeline_id AS pipeline_id,
+        'unbound_var_in_negative_goal' AS error_type
+    FROM "error:unbound_var_in_negative_goal"
+    
+    UNION
+    
+    SELECT DISTINCT
+        "error:neg_goal_sql_unresolved".pipeline_id AS pipeline_id,
+        'neg_goal_sql_unresolved' AS error_type
+    FROM "error:neg_goal_sql_unresolved";

@@ -176,7 +176,23 @@ async def wait_till_complete(session, pipeline_name, tokens):
                     raise Exception(f"Unknown ingest status: {status}")
         await asyncio.sleep(1)
 
+async def adhoc_query(session, pipeline_name, sql):
+    url = f'/v0/pipelines/{pipeline_name}/query'
+    async with session.get(url, params={'sql': sql, 'format': 'json', 'array': 'true'}) as resp:
+        return await resp.json()
 
+async def ensure_absence_of_errors(session, pipeline_name, pipeline_id):
+    sql = f"SELECT * FROM \"error\" WHERE pipeline_id = '{pipeline_id}'"
+    result = await adhoc_query(session, pipeline_name, sql)
+    if result:
+        raise Exception(f"Pipeline {pipeline_name} has errors: {result}")
+
+async def fetch_output_sql(session, pipeline_name, pipeline_id):
+    sql = f"SELECT sql_lines FROM full_pipeline_sql WHERE pipeline_id = '{pipeline_id}'"
+    result = await adhoc_query(session, pipeline_name, sql)
+    print(f"REUSLT: {result}")
+    # assert len(result) == 1
+    return result['sql_lines']
 
 async def main(app_schema_path):
     feldera_url = 'http://localhost:8080'
@@ -207,6 +223,11 @@ async def main(app_schema_path):
         # print(f"RESP : {resp}")
         # await insert_records(session, pipeline_name, records1)
         await wait_till_complete(session, pipeline_name, tokens)
+
+        await ensure_absence_of_errors(session, pipeline_name, pipeline_id)
+
+        output_lines = await fetch_output_sql(session, pipeline_name, pipeline_id)
+        print("\n".join(output_lines))
 
 
 

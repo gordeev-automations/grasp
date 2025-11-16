@@ -1,0 +1,8 @@
+fact(a: 1, b: 3)
+fact(a: 1, b: 4)
+fact(a: 2, b: 5)
+fact(a: 2, b: 3)
+
+only_a(a:) <- fact(a:)
+only_b(b:) <- fact(b:)
+
