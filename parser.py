@@ -145,7 +145,7 @@ def records_from_rule_param(rule_param, rule_id, idgen):
 
 
 
-def records_from_rule_decl(rule_decl, table_name, rule_params, body_stmts, idgen):
+def records_from_rule_decl(rule_decl, original_source_path, table_name, rule_params, body_stmts, idgen):
     rule_id = f'ru{next(idgen)}'
     param_records = [records_from_rule_param(rp, rule_id, idgen) for rp in rule_params]
     body_stmts_records = [records_from_body_stmt(i, bs, rule_id, idgen) for (i, bs) in enumerate(body_stmts)]
@@ -155,6 +155,7 @@ def records_from_rule_decl(rule_decl, table_name, rule_params, body_stmts, idgen
         { 'rule': [{
             'rule_id': rule_id, 'table_name': table_name,
 
+            'source_path': original_source_path,
             'start_line': rule_decl.meta.container_line,
             'start_column': rule_decl.meta.container_column,
             'end_line': rule_decl.meta.container_end_line,
@@ -164,37 +165,37 @@ def records_from_rule_decl(rule_decl, table_name, rule_params, body_stmts, idgen
 
 
 
-def records_from_toplevel_decls(toplevel_decl, idgen):
+def records_from_toplevel_decls(toplevel_decl, original_source_path, idgen):
     # print(toplevel_decl)
     match toplevel_decl:
         case Tree(data=Token(type='RULE', value='rule'), children=[
             Token(type='IDENTIFIER', value=table_name),
             Tree(data=Token(type='RULE', value='args'), children=rule_params),
         ]):
-            return records_from_rule_decl(toplevel_decl, table_name, rule_params, [], idgen)
+            return records_from_rule_decl(toplevel_decl, original_source_path, table_name, rule_params, [], idgen)
         case Tree(data=Token(type='RULE', value='rule'), children=[
             Token(type='IDENTIFIER', value=table_name),
             Tree(data=Token(type='RULE', value='args'), children=rule_params),
             Tree(data=Token(type='RULE', value='body_stmt'), children=[body_stmt]),
         ]):
-            return records_from_rule_decl(toplevel_decl, table_name, rule_params, [body_stmt], idgen)
+            return records_from_rule_decl(toplevel_decl, original_source_path, table_name, rule_params, [body_stmt], idgen)
         case _:
             raise Exception(f"Invalid toplevel decl {toplevel_decl}")
 
 
 
-def records_from_tree(tree, idgen):
+def records_from_tree(tree, original_source_path, idgen):
     match tree:
         case Tree(data=Token(type='RULE', value='start'), children=toplevel_decls):
             return functools.reduce(
                 merge_records,
-                [records_from_toplevel_decls(d, idgen) for d in toplevel_decls])
+                [records_from_toplevel_decls(d, original_source_path, idgen) for d in toplevel_decls])
         case _:
             raise Exception(f"Invalid tree {tree}")
 
 
 
-def parse(text):
+def parse(text, original_path):
     scripts_dir = os.path.abspath(os.path.dirname(__file__))
     grammar_text = open(f'{scripts_dir}/grammar.lark', 'r').read()
     # propagate token positions: line, column, end_line, end_col.
@@ -202,7 +203,7 @@ def parse(text):
     parser = Lark(grammar_text, parser="earley", propagate_positions=True)
     tree = parser.parse(text)
     idgen = natural_num_generator()
-    return records_from_tree(tree, idgen)
+    return records_from_tree(tree, original_path, idgen)
 
 # import importlib
 # import parser

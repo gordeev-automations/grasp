@@ -33,6 +33,7 @@ CREATE TABLE rule (
     rule_id TEXT NOT NULL,
     table_name TEXT NOT NULL,
 
+    source_path TEXT NOT NULL,
     start_line INTEGER NOT NULL,
     start_column INTEGER NOT NULL,
     end_line INTEGER NOT NULL,

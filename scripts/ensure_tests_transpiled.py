@@ -112,7 +112,7 @@ def need_to_transpile(testcase_path, cache_dir):
     return not os.path.exists(testcase_dest_path(testcase_path, cache_dir))
 
 async def enqueue_transpilation(testcase_path, pipeline_name, session):
-    records0 = parser.parse(open(testcase_path, 'r').read())
+    records0 = parser.parse(open(testcase_path, 'r').read(), testcase_path)
     pipeline_id = f'{testcase_key(testcase_path)}:{file_hash(testcase_path)}'
     records = {}
     for table_name, rows in records0.items():
