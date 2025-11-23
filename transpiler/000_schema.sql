@@ -31,7 +31,12 @@ CREATE TABLE schema_table_archive_pg (
 CREATE TABLE rule (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
-    table_name TEXT NOT NULL
+    table_name TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE rule_param (
@@ -39,7 +44,12 @@ CREATE TABLE rule_param (
     rule_id TEXT NOT NULL,
     "key" TEXT NOT NULL,
     expr_id TEXT NOT NULL,
-    expr_type TEXT NOT NULL
+    expr_type TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE aggr_expr (
@@ -47,42 +57,72 @@ CREATE TABLE aggr_expr (
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
     fn_name TEXT NOT NULL,
-    arg_var TEXT
+    arg_var TEXT,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE int_expr (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
-    value BIGINT NOT NULL
+    value BIGINT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE str_expr (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
-    value TEXT NOT NULL
+    value TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE var_expr (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
-    var_name TEXT NOT NULL
+    var_name TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE sql_expr (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
-    template TEXT ARRAY NOT NULL
+    template TEXT ARRAY NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE dict_expr (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
-    dict_id TEXT NOT NULL
+    dict_id TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE dict_entry (
@@ -91,14 +131,24 @@ CREATE TABLE dict_entry (
     dict_id TEXT NOT NULL,
     key TEXT NOT NULL,
     expr_id TEXT NOT NULL,
-    expr_type TEXT NOT NULL
+    expr_type TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE array_expr (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
-    array_id TEXT NOT NULL
+    array_id TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE array_entry (
@@ -107,7 +157,12 @@ CREATE TABLE array_entry (
     array_id TEXT NOT NULL,
     "index" INTEGER NOT NULL,
     expr_id TEXT NOT NULL,
-    expr_type TEXT NOT NULL
+    expr_type TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE body_fact (
@@ -116,7 +171,12 @@ CREATE TABLE body_fact (
     fact_id TEXT NOT NULL,
     "index" INTEGER NOT NULL,
     table_name TEXT NOT NULL,
-    negated BOOLEAN NOT NULL
+    negated BOOLEAN NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE fact_arg (
@@ -125,7 +185,12 @@ CREATE TABLE fact_arg (
     fact_id TEXT NOT NULL,
     "key" TEXT NOT NULL,
     expr_id TEXT NOT NULL,
-    expr_type TEXT NOT NULL
+    expr_type TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE body_match (
@@ -135,14 +200,24 @@ CREATE TABLE body_match (
     left_expr_id TEXT NOT NULL,
     left_expr_type TEXT NOT NULL,
     right_expr_id TEXT NOT NULL,
-    right_expr_type TEXT NOT NULL
+    right_expr_type TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE body_sql_cond (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     cond_id TEXT NOT NULL,
-    sql_expr_id TEXT NOT NULL
+    sql_expr_id TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
 /*

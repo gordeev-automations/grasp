@@ -129,9 +129,8 @@ async def report_errors_if_any(session, pipeline_name, pipeline_id, testcase_pat
     return False 
 
 async def write_output_sql(session, pipeline_name, pipeline_id, dest_path):
-    print(f"Writing {dest_path}")
     sql_lines = await fetch_output_sql_lines(session, pipeline_name, pipeline_id)
-    print(f"SQL LINES: {sql_lines}")
+    # print(f"SQL LINES: {sql_lines}")
     with open(dest_path, 'w') as f:
         for line in sql_lines:
             f.write(line + '\n')
@@ -143,7 +142,7 @@ async def main(testcases_paths):
     pipeline_name = 'transpiler'
 
     curr_dir = os.path.abspath(os.path.dirname(__file__))
-    cache_dir = f'{curr_dir}/test/.grasp_cache'
+    cache_dir = f'{curr_dir}/../test/.grasp_cache'
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
 
