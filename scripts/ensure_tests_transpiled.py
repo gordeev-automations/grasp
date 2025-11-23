@@ -6,7 +6,7 @@ import asyncio
 import aiohttp
 import json5
 
-import parser
+import grasp.parser as parser
 
 
 

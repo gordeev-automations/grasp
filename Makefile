@@ -1,7 +1,7 @@
 ensure_transpiler_ready:
-	python ./ensure_transpiler_ready.py
+	PYTHONPATH=.. python ./scripts/ensure_transpiler_ready.py
 
 test: ensure_transpiler_ready
-	python ./ensure_tests_transpiled.py `pwd`/test/*.test.grasp
+	PYTHONPATH=.. python ./scripts/ensure_tests_transpiled.py `pwd`/test/*.test.grasp
 
-.PHONY: ensure_transpiler_ready
+.PHONY: ensure_transpiler_ready test

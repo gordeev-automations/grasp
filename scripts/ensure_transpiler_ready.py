@@ -6,8 +6,8 @@ import aiohttp
 
 
 
-from example_source_dsl import get_rules
-from dsl import rules_to_records, schemas_to_records
+# from example_source_dsl import get_rules
+# from dsl import rules_to_records, schemas_to_records
 
 
 
@@ -107,14 +107,14 @@ def read_transpiler_sql():
     curr_dir = os.path.abspath(os.path.dirname(__file__))
     # select all *.sql files from transpiler/ directory
     # sort by name. Read in order, concatenate content and return
-    sql_files = [f for f in os.listdir(f'{curr_dir}/transpiler') if f.endswith('.sql')]
+    sql_files = [f for f in os.listdir(f'{curr_dir}/../transpiler') if f.endswith('.sql')]
     sql_files.sort()
-    sql_files = [open(f'{curr_dir}/transpiler/{f}', 'r').read() for f in sql_files]
+    sql_files = [open(f'{curr_dir}/../transpiler/{f}', 'r').read() for f in sql_files]
     return '\n'.join(sql_files)
 
 def read_transpiler_udf_rs():
     curr_dir = os.path.abspath(os.path.dirname(__file__))
-    return open(f'{curr_dir}/transpiler/udf.rs', 'r').read()
+    return open(f'{curr_dir}/../transpiler/udf.rs', 'r').read()
 
 async def ensure_transpiler_pipeline_is_ready(session, pipeline_name):
     # curr_dir = os.path.abspath(os.path.dirname(__file__))
