@@ -28,6 +28,19 @@ CREATE TABLE schema_table_archive_pg (
     pg_query TEXT NOT NULL
 ) WITH ('materialized' = 'true');
 
+/*
+# Additional transpilation options.
+*/
+
+CREATE TABLE table_name_prefix (
+    pipeline_id TEXT NOT NULL,
+    prefix TEXT NOT NULL
+);
+
+/*
+# AST records:
+*/
+
 CREATE TABLE rule (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,

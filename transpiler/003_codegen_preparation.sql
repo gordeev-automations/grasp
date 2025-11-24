@@ -88,6 +88,38 @@ CREATE MATERIALIZED VIEW table_output_order AS
     GROUP BY table_dependency.pipeline_id, table_dependency.table_name;
 
 /*
+output_table_name(pipeline_id:, table_name:, output_table_name:) <-
+    table_output_order(pipeline_id:, table_name:)
+    output_table_name := table_name
+    not table_name_prefix(pipeline_id:)
+output_table_name(pipeline_id:, table_name:, output_table_name:) <-
+    table_output_order(pipeline_id:, table_name:)
+    table_name_prefix(pipeline_id:, prefix:)
+    output_table_name := `${prefix}:${table_name}`
+*/
+CREATE MATERIALIZED VIEW output_table_name AS
+    SELECT DISTINCT
+        table_output_order.pipeline_id,
+        table_output_order.table_name,
+        table_output_order.table_name AS output_table_name
+    FROM table_output_order
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM table_name_prefix
+        WHERE table_output_order.pipeline_id = table_name_prefix.pipeline_id
+    )
+
+    UNION
+
+    SELECT DISTINCT
+        table_output_order.pipeline_id,
+        table_output_order.table_name,
+        (table_name_prefix.prefix || ':' || table_output_order.table_name) AS output_table_name
+    FROM table_output_order
+    JOIN table_name_prefix
+        ON table_output_order.pipeline_id = table_name_prefix.pipeline_id;
+
+/*
 first_table(pipeline_id:, table_name: min<table_name>, order:) <-
     table_output_order(pipeline_id:, table_name:, order:)
     #all_records_inserted(pipeline_id:)
@@ -603,7 +635,10 @@ CREATE MATERIALIZED VIEW var_bound_in_fact AS
         AND fact_arg.fact_id = fact_alias.fact_id;
 
 /*
-canonical_fact_var_sql(pipeline_id:, rule_id:, var_name:, sql: argmin<sql, fact_index>, fact_index: min<fact_index>) <-
+canonical_fact_var_sql(
+    pipeline_id:, rule_id:, var_name:,
+    sql: argmin<sql, fact_index>, fact_index: min<fact_index>
+) <-
     var_bound_in_fact(pipeline_id:, rule_id:, var_name:, negated: false, sql:, fact_index:)
     #all_records_inserted(pipeline_id:)
 */

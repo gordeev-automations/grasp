@@ -114,7 +114,15 @@ def need_to_transpile(testcase_path, cache_dir):
 async def enqueue_transpilation(testcase_path, pipeline_name, session):
     records0 = parser.parse(open(testcase_path, 'r').read(), testcase_path)
     pipeline_id = f'{testcase_key(testcase_path)}:{file_hash(testcase_path)}'
-    records = {}
+    records = {
+        'table_name_prefix': [{
+            # all tables in every testcase are prefixed with the testcase name.
+            # This way we can transpile each case independently,
+            # and then lump them all together, to run all tests in parallel.
+            'pipeline_id': pipeline_id,
+            'prefix': testcase_key(testcase_path),
+        }]
+    }
     for table_name, rows in records0.items():
         records[table_name] = [{**r, 'pipeline_id': pipeline_id} for r in rows]
     tokens = await insert_records(session, pipeline_name, records)
