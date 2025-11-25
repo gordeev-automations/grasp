@@ -1,107 +1,12 @@
 import os
-import sys
-import json5
 import asyncio
 import aiohttp
 
-
-
-# from example_source_dsl import get_rules
-# from dsl import rules_to_records, schemas_to_records
+from grasp.scripts.util import fetch_pipeline_status, recompile_pipeline, do_need_to_recompile_pipeline, wait_till_pipeline_compiled, ensure_pipeline_started
 
 
 
-async def do_need_to_recompile_transpiler(session, pipeline_name, curr_transpiler_sql, curr_udf_rs):
-    url = f'/v0/pipelines/{pipeline_name}'
-    async with session.get(url) as resp:
-        json_resp = await resp.json()
-        match json_resp:
-            case {'error_code': 'UnknownPipelineName'}:
-                print("Transpiler pipeline does not exist")
-                return True
-            case {'program_code': program_code, 'udf_rust': udf_rs}:
-                if program_code != curr_transpiler_sql or udf_rs != curr_udf_rs:
-                    return True
-    return False
 
-
-
-async def fetch_pipeline_status(session, pipeline_name):
-    url = f'/v0/pipelines/{pipeline_name}'
-    async with session.get(url, params={'selector': 'status'}) as resp:
-        return await resp.json()
-
-
-
-async def recompile_transpiler(session, pipeline_name, transpiler_sql, udf_rs):
-    status = await fetch_pipeline_status(session, pipeline_name)
-    # print(f"STATUS: {status}")
-    has_prev_version = not (status.get('error_code', None) == 'UnknownPipelineName')
-    if has_prev_version:
-        if status['deployment_status'] == 'Running':
-            async with session.post(f'/v0/pipelines/{pipeline_name}/stop', params={'force': 'true'}) as resp:
-                if resp.status not in [200, 202]:
-                    body = await resp.text()
-                    raise Exception(f"Unexpected response {resp.status}: {body}")
-
-        while True:
-            status = await fetch_pipeline_status(session, pipeline_name)
-            if status['deployment_status'] == 'Stopped':
-                break
-            await asyncio.sleep(1)
-        
-        async with session.post(f'/v0/pipelines/{pipeline_name}/clear') as resp:
-            if resp.status not in [200, 202]:
-                body = await resp.text()
-                raise Exception(f"Unexpected response {resp.status}: {body}")
-
-        while True:
-            status = await fetch_pipeline_status(session, pipeline_name)
-            if status['storage_status'] == 'Cleared':
-                break
-            await asyncio.sleep(1)
-
-    url = f'/v0/pipelines/{pipeline_name}'
-    data = {
-        'program_code': transpiler_sql,
-        'name': pipeline_name,
-        'udf_rust': udf_rs,
-    }
-    async with session.put(url, json=data) as resp:
-        if resp.status not   in [200, 201]:
-            body = await resp.text()
-            raise Exception(f"Unexpected response {resp.status}: {body}")
-
-
-
-async def wait_till_transpiler_compiled(session, pipeline_name):
-    while True:
-        status = await fetch_pipeline_status(session, pipeline_name)
-        # print(f"Status: {status}")
-        match status['program_status']:
-            case 'Success':
-                break
-            case 'Pending' | 'CompilingSql' | 'SqlCompiled' | 'CompilingRust':
-                pass
-            case 'SqlError' | 'RustError' | 'SystemError':
-                raise Exception("Transpiler failed to compile")
-            case program_status:
-                raise Exception(f"Unknown transpiler status: {program_status}")
-        await asyncio.sleep(1)
-
-
-
-async def ensure_transpiler_started(session, pipeline_name):
-    url = f'/v0/pipelines/{pipeline_name}/start'
-    async with session.post(url) as resp:
-        if resp.status not in [200, 201, 202]:
-            body = await resp.text()
-            raise Exception(f"Unexpected response {resp.status}: {body}")
-    while True:
-        status = await fetch_pipeline_status(session, pipeline_name)
-        if status['deployment_status'] == 'Running':
-            break
-        await asyncio.sleep(1)
 
 def read_transpiler_sql():
     curr_dir = os.path.abspath(os.path.dirname(__file__))
@@ -122,11 +27,11 @@ async def ensure_transpiler_pipeline_is_ready(session, pipeline_name):
     udf_rs = read_transpiler_udf_rs()
     # retrieve current version of program_code for transpiler pipeline
     # is it is not the same as on on the disc, recompile it
-    if (await do_need_to_recompile_transpiler(session, pipeline_name, transpiler_sql, udf_rs)):
-        await recompile_transpiler(session, pipeline_name, transpiler_sql, udf_rs)
+    if (await do_need_to_recompile_pipeline(session, pipeline_name, transpiler_sql, udf_rs)):
+        await recompile_pipeline(session, pipeline_name, transpiler_sql, udf_rs)
     print("Waiting for transpiler to be ready")
-    await wait_till_transpiler_compiled(session, pipeline_name)
-    await ensure_transpiler_started(session, pipeline_name)
+    await wait_till_pipeline_compiled(session, pipeline_name)
+    await ensure_pipeline_started(session, pipeline_name)
 
 
 
@@ -136,16 +41,6 @@ async def main():
 
     async with aiohttp.ClientSession(feldera_url, timeout=aiohttp.ClientTimeout(sock_read=0,total=0)) as session:
         await ensure_transpiler_pipeline_is_ready(session, pipeline_name)
-        # records1, pipeline_id = rules_to_records(rules)
-        # records2 = schemas_to_records(tables2, pipeline_id)
-        # records = {**records2, **records1}
-        # tokens = await insert_records(session, pipeline_name, records)
-        # await wait_till_complete(session, pipeline_name, tokens)
-
-        # await ensure_absence_of_errors(session, pipeline_name, pipeline_id)
-
-        # output_lines = await fetch_output_sql(session, pipeline_name, pipeline_id)
-        # print("\n".join(output_lines))
 
 
 

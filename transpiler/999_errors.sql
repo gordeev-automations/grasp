@@ -72,6 +72,8 @@ error(pipeline_id:, error_type: "unbound_var_in_negative_fact") <-
     error:unbound_var_in_negative_fact(pipeline_id:)
 error(pipeline_id:, error_type: "neg_fact_sql_unresolved") <-
     error:neg_fact_sql_unresolved(pipeline_id:)
+error(pipeline_id:, error_type: "match_right_expr_unresolved") <-
+    error:match_right_expr_unresolved(pipeline_id:)
 */
 CREATE MATERIALIZED VIEW "error" AS
     SELECT DISTINCT
