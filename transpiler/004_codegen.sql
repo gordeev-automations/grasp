@@ -780,6 +780,12 @@ CREATE MATERIALIZED VIEW join_sql AS
 
 /*
 select_sql(pipeline_id:, rule_id:, sql_lines:) <-
+    constant_rule(pipeline_id:, rule_id:)
+    rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
+    substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
+    columns_sql := join(array<`{{expr_sql}} AS "{{key}}"`>, ", ")
+    sql_lines := [`SELECT DISTINCT {{columns_sql}}`]
+select_sql(pipeline_id:, rule_id:, sql_lines:) <-
     rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
     grouped_by_sql(pipeline_id:, rule_id:, sql_lines: group_by_sql_lines)
@@ -792,6 +798,29 @@ select_sql(pipeline_id:, rule_id:, sql_lines:) <-
     ]
 */
 CREATE MATERIALIZED VIEW select_sql AS
+    SELECT DISTINCT
+        rule_param.pipeline_id,
+        rule_param.rule_id,
+        ARRAY['SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_expr.sql || ' AS "' || rule_param.key || '"'), ', ')] AS sql_lines
+    FROM constant_rule
+    JOIN rule_param
+        ON constant_rule.pipeline_id = rule_param.pipeline_id
+        AND constant_rule.rule_id = rule_param.rule_id
+    JOIN substituted_expr
+        ON rule_param.pipeline_id = substituted_expr.pipeline_id
+        AND rule_param.rule_id = substituted_expr.rule_id
+        AND rule_param.expr_id = substituted_expr.expr_id
+        AND rule_param.expr_type = substituted_expr.expr_type
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM fact_alias
+        WHERE rule_param.pipeline_id = fact_alias.pipeline_id
+        AND rule_param.rule_id = fact_alias.rule_id
+    )
+    GROUP BY rule_param.pipeline_id, rule_param.rule_id
+
+    UNION
+
     SELECT DISTINCT
         rule_param.pipeline_id,
         rule_param.rule_id,
@@ -827,7 +856,7 @@ table_view_sql(pipeline_id:, table_name:, rule_id:, sql_lines:) <-
     table_view_sql(pipeline_id:, table_name:, rule_id: prev_rule_id, sql_lines: prev_sql_lines)
     table_next_rule(pipeline_id:, table_name:, prev_rule_id:, next_rule_id:)
     select_sql(pipeline_id:, rule_id: next_rule_id, sql_lines: next_sql_lines)
-    table_next_rule(pipeline_id:, table_name:, prev_rule_id: next_rule_id)
+    # table_next_rule(pipeline_id:, table_name:, prev_rule_id: next_rule_id)
     sql_lines := [*prev_sql_lines, "UNION", *next_sql_lines]
 */
 DECLARE RECURSIVE VIEW table_view_sql (pipeline_id TEXT, table_name TEXT, rule_id TEXT, sql_lines TEXT ARRAY);
@@ -867,34 +896,33 @@ CREATE MATERIALIZED VIEW table_view_sql AS
     JOIN select_sql
         ON tn.pipeline_id = select_sql.pipeline_id
         AND tn.next_rule_id = select_sql.rule_id
-    JOIN table_next_rule AS tnn
-        ON tn.pipeline_id = tnn.pipeline_id
-        AND tn.table_name = tnn.table_name
-        AND tn.next_rule_id = tnn.prev_rule_id;
+    -- JOIN table_next_rule AS tnn
+    --     ON tn.pipeline_id = tnn.pipeline_id
+    --     AND tn.table_name = tnn.table_name
+    --     AND tn.next_rule_id = tnn.prev_rule_id
+    ;
 
 /*
 view_full_sql(pipeline_id:, table_name:, sql_lines:) <-
+    table_last_rule(pipeline_id:, table_name:, rule_id:)
     table_view_sql(pipeline_id:, table_name:, rule_id:, sql_lines: sql_lines0)
     sql_lines := [*sql_lines0, ";", ""]
-    not table_next_rule(pipeline_id:, table_name:, prev_rule_id: rule_id)
 */
 CREATE MATERIALIZED VIEW view_full_sql AS
     SELECT DISTINCT
         table_view_sql.pipeline_id,
         table_view_sql.table_name,
         ARRAY_CONCAT(table_view_sql.sql_lines, ARRAY[';', '']) AS sql_lines
-    FROM table_view_sql
-    WHERE NOT EXISTS (
-        SELECT 1
-        FROM table_next_rule AS tn
-        WHERE tn.pipeline_id = table_view_sql.pipeline_id
-        AND tn.table_name = table_view_sql.table_name
-        AND tn.prev_rule_id = table_view_sql.rule_id
-    );
+    FROM table_last_rule
+    JOIN table_view_sql
+        ON table_last_rule.pipeline_id = table_view_sql.pipeline_id
+        AND table_last_rule.table_name = table_view_sql.table_name
+        AND table_last_rule.rule_id = table_view_sql.rule_id
+    ;
 
 /*
 pipeline_views_sql(pipeline_id:, table_name:, sql_lines:) <-
-    first_table(pipeline_id:, table_name:, order: 1)
+    first_table(pipeline_id:, table_name:, order: 0)
     view_full_sql(pipeline_id:, table_name:, sql_lines:)
 pipeline_views_sql(pipeline_id:, table_name:, sql_lines:) <-
     pipeline_views_sql(pipeline_id:, table_name: prev_table_name, sql_lines: prev_sql_lines)
@@ -912,7 +940,7 @@ CREATE MATERIALIZED VIEW pipeline_views_sql AS
     JOIN view_full_sql
         ON first_table.pipeline_id = view_full_sql.pipeline_id
         AND first_table.table_name = view_full_sql.table_name
-    WHERE first_table."order" = 1
+    WHERE first_table."order" = 0
 
     UNION
 
