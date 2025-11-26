@@ -5,28 +5,28 @@ person(name: "Sergey", age: 19, country: "Belarus")
 person(name: "Vladislav", age: NULL, country: "Belarus")
 
 aggregated(
-    min_age: min<age>, max_age:, count: count<>,
-    at_least_one_without_age:, at_least_one_older_than_18:,
-    name_of_the_oldest:, name_of_the_youngest:
+	min_age: min<age>, max_age:, count: count<>,
+	at_least_one_without_age:, at_least_one_older_than_18:,
+	name_of_the_oldest:, name_of_the_youngest:
 ) <-
-    person(age:)
-    max_age := max<age>
-    at_least_one_without_age := some<age is NULL>
-    at_least_one_older_than_18 := some<older_than_18>
-    older_than_18 := age >= 18
-    name_of_the_oldest := argmax<name, by: age>
-    name_of_the_youngest := argmin<name, by: age>
+	person(age:)
+	max_age := max<age>
+	at_least_one_without_age := some<age is NULL>
+	at_least_one_older_than_18 := some<older_than_18>
+	older_than_18 := age >= 18
+	name_of_the_oldest := argmax<name, by: age>
+	name_of_the_youngest := argmin<name, by: age>
 
 aggregated_by_country(
-    country:,
-    min_age: min<age>, max_age:, count: count<>,
-    at_least_one_without_age:, at_least_one_older_than_18:,
-    name_of_the_oldest:, name_of_the_youngest:,
+	country:,
+	min_age: min<age>, max_age:, count: count<>,
+	at_least_one_without_age:, at_least_one_older_than_18:,
+	name_of_the_oldest:, name_of_the_youngest:,
 ) <-
-    max_age := max<age>
-    name_of_the_oldest := argmax<name, by: age>
-    at_least_one_older_than_18 := some<older_than_18>
-    older_than_18 := age >= 18
-    at_least_one_without_age := some<age is NULL>
-    name_of_the_youngest := argmin<name, by: age>
-    person(age:, country:)
+	max_age := max<age>
+	name_of_the_oldest := argmax<name, by: age>
+	at_least_one_older_than_18 := some<older_than_18>
+	older_than_18 := age >= 18
+	at_least_one_without_age := some<age is NULL>
+	name_of_the_youngest := argmin<name, by: age>
+	person(age:, country:)
