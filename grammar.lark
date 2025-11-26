@@ -1,19 +1,20 @@
 start: (_WS* rule _NEWLINE?)*
 
-rule: IDENTIFIER args? _WS_INLINE* "<-" _WS_INLINE* _NEWLINE multiline_body
-    | IDENTIFIER args? _WS_INLINE* "<-" _WS_INLINE* body_stmt
-    | IDENTIFIER args?
+rule: IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")" _WS_INLINE* "<-" _WS_INLINE* _NEWLINE multiline_body
+    | IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")" _WS_INLINE* "<-" _WS_INLINE* body_stmt
+    | IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
 
-args: "(" _WS_INLINE* ")"
-    | "(" _WS_INLINE* arg (_WS_INLINE* "," _WS_INLINE* arg)* _WS_INLINE* ")"
-arg: IDENTIFIER ":"
-    | IDENTIFIER ":" _WS_INLINE+ expr
+kv_args: kv_arg (_WS* "," _WS* kv_arg)*
+kv_arg: IDENTIFIER ":" | IDENTIFIER ":" _WS+ expr
+val_args: expr (_WS* "," _WS* expr)*
+fn_args: val_args (_WS* "," _WS* kv_args)? | kv_args
 
 multiline_body: (_INDENT body_stmt _WS_INLINE* _NEWLINE)+
 body_stmt: fact
-fact: ("not" _WS_INLINE+)? IDENTIFIER args?
+fact: ("not" _WS_INLINE+)? IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
 
-expr: IDENTIFIER -> var | NUMBER | ESCAPED_STRING
+expr: IDENTIFIER -> var | NUMBER | ESCAPED_STRING | aggregated_expr
+aggregated_expr: IDENTIFIER "<" _WS_INLINE* (fn_args _WS_INLINE*)? ">"
 
 IDENTIFIER: LETTER ("_"|LETTER|DIGIT)* (":" LETTER ("_"|LETTER|DIGIT)*)?
 
