@@ -1,0 +1,38 @@
+{
+    aggregated: [
+        {
+            min_age: 12, max_age: 19, count: 5,
+            at_least_one_without_age: true,
+            at_least_one_older_than_18: true,
+            name_of_the_oldest: "Sergey",
+            name_of_the_youngest: "Vladimir",
+        }
+    ],
+
+    aggregated_by_country: [
+        {
+            country: "Russia",
+            min_age: 12, max_age: 13, count: 2,
+            at_least_one_without_age: false,
+            at_least_one_older_than_18: false,
+            name_of_the_oldest: "Mikhail",
+            name_of_the_youngest: "Vladimir",
+        },
+        {
+            country: "Ukraine",
+            min_age: 17, max_age: 17, count: 1,
+            at_least_one_without_age: false,
+            at_least_one_older_than_18: false,
+            name_of_the_oldest: "Alexey",
+            name_of_the_youngest: "Alexey",
+        },
+        {
+            country: "Belarus",
+            min_age: 19, max_age: 19, count: 2,
+            at_least_one_without_age: true,
+            at_least_one_older_than_18: true,
+            name_of_the_oldest: "Sergey",
+            name_of_the_youngest: "Sergey",
+        },
+    ],
+}
