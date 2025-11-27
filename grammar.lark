@@ -10,12 +10,17 @@ val_args: expr (_WS* "," _WS* expr)*
 fn_args: val_args (_WS* "," _WS* kv_args)? | kv_args
 
 multiline_body: (_INDENT body_stmt _WS_INLINE* _NEWLINE)+
-body_stmt: fact
+body_stmt: fact | match_stmt
 fact: ("not" _WS_INLINE+)? IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
+match_stmt: expr _WS_INLINE+ ":=" _WS_INLINE+ expr
 
-expr: IDENTIFIER -> var | NUMBER | ESCAPED_STRING | aggregated_expr
+expr: IDENTIFIER | NUMBER | ESCAPED_STRING | aggregated_expr | binop_expr
+binop_expr: expr _WS_INLINE+ SPACED_BINOP _WS_INLINE+ expr
+    | expr _WS_INLINE* CMP_OP _WS_INLINE* expr
 aggregated_expr: IDENTIFIER "<" _WS_INLINE* (fn_args _WS_INLINE*)? ">"
 
+CMP_OP: "=" | ">" | "<" | ">=" | "<="
+SPACED_BINOP: "is"
 IDENTIFIER: LETTER ("_"|LETTER|DIGIT)* (":" LETTER ("_"|LETTER|DIGIT)*)?
 
 _INDENT: "\t"

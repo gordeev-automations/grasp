@@ -9,6 +9,11 @@ async def fetch_pipeline_status(session, pipeline_name):
     async with session.get(url, params={'selector': 'status'}) as resp:
         return await resp.json()
 
+async def fetch_pipeline_state(session, pipeline_name):
+    url = f'/v0/pipelines/{pipeline_name}'
+    async with session.get(url) as resp:
+        return await resp.json()
+
 async def do_need_to_recompile_pipeline(session, pipeline_name, curr_transpiler_sql, curr_udf_rs):
     url = f'/v0/pipelines/{pipeline_name}'
     async with session.get(url) as resp:
@@ -70,7 +75,9 @@ async def wait_till_pipeline_compiled(session, pipeline_name):
             case 'Pending' | 'CompilingSql' | 'SqlCompiled' | 'CompilingRust':
                 pass
             case 'SqlError' | 'RustError' | 'SystemError':
-                raise Exception("Transpiler failed to compile")
+                data = await fetch_pipeline_state(session, pipeline_name)
+                print(data['program_error'])
+                raise Exception("Pipeline failed to compile")
             case program_status:
                 raise Exception(f"Unknown transpiler status: {program_status}")
         await asyncio.sleep(1)
@@ -139,14 +146,14 @@ async def insert_records(session, pipeline_name, records):
 async def fetch_ingest_status(session, pipeline_name, token):
     url = f'/v0/pipelines/{pipeline_name}/completion_status'
     async with session.get(url, params={'token': token}) as resp:
-        if resp.status in [200, 201]:
+        if resp.status in [200, 201, 202]:
             return await resp.json()
         raise Exception(f"Unexpected response {resp.status}: {await resp.text()}")
 
 async def adhoc_query(session, pipeline_name, sql):
     url = f'/v0/pipelines/{pipeline_name}/query'
     async with session.get(url, params={'sql': sql, 'format': 'json', 'array': 'true'}) as resp:
-        if resp.status in [200, 201]:
+        if resp.status in [200, 201, 202]:
             return await resp.json()
         raise Exception(f"Unexpected response {resp.status}: {await resp.text()}\nSQL: {sql}")
 

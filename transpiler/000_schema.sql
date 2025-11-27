@@ -71,7 +71,50 @@ CREATE TABLE aggr_expr (
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
     fn_name TEXT NOT NULL,
-    arg_var TEXT,
+    fncall_id TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
+) WITH ('materialized' = 'true');
+
+CREATE TABLE fncall_expr (
+    pipeline_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    expr_id TEXT NOT NULL,
+    fn_name TEXT NOT NULL,
+    fncall_id TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
+) WITH ('materialized' = 'true');
+
+CREATE TABLE fn_val_arg (
+    pipeline_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    fncall_id TEXT NOT NULL,
+    fncall_expr_type TEXT NOT NULL,
+    arg_index INTEGER NOT NULL,
+    expr_id TEXT NOT NULL,
+    expr_type TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
+) WITH ('materialized' = 'true');
+
+CREATE TABLE fn_kv_arg (
+    pipeline_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    fncall_id TEXT NOT NULL,
+    fncall_expr_type TEXT NOT NULL,
+    "key" TEXT NOT NULL,
+    expr_id TEXT NOT NULL,
+    expr_type TEXT NOT NULL,
 
     start_line INTEGER NOT NULL,
     start_column INTEGER NOT NULL,
@@ -108,6 +151,33 @@ CREATE TABLE var_expr (
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
     var_name TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
+) WITH ('materialized' = 'true');
+
+CREATE TABLE null_expr (
+    pipeline_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    expr_id TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
+) WITH ('materialized' = 'true');
+
+CREATE TABLE binop_expr (
+    pipeline_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    expr_id TEXT NOT NULL,
+    left_expr_id TEXT NOT NULL,
+    left_expr_type TEXT NOT NULL,
+    right_expr_id TEXT NOT NULL,
+    right_expr_type TEXT NOT NULL,
+    op TEXT NOT NULL,
 
     start_line INTEGER NOT NULL,
     start_column INTEGER NOT NULL,

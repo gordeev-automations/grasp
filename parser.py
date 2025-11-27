@@ -13,6 +13,7 @@ def natural_num_generator():
 
 def merge_records(records1, records2):
     result = {}
+    # print(f"MERGE RECORDS {records1} {records2}")
     for key, rows in records1.items():
         if key in records2:
             result[key] = [*rows, *records2[key]]
@@ -22,6 +23,135 @@ def merge_records(records1, records2):
         if key not in result:
             result[key] = rows
     return result
+
+
+
+def records_from_val_args(rule_id, fncall_id, fncall_type, val_args, idgen):
+    records = []
+    for index, arg_expr in enumerate(val_args):
+        match arg_expr:
+            case Tree(data=Token(type='RULE', value='expr'), children=[expr]):
+                expr_id = f'ex{next(idgen)}'
+                expr_type, expr_records = records_from_expr(expr, rule_id, expr_id, idgen)
+                records.append(merge_records(
+                    expr_records,
+                    {
+                        'fn_val_arg': [{
+                            'rule_id': rule_id,
+                            'fncall_id': fncall_id,
+                            'fncall_expr_type': fncall_type,
+                            'arg_index': index,
+                            'expr_id': expr_id,
+                            'expr_type': expr_type,
+
+                            'start_line': arg_expr.meta.container_line,
+                            'start_column': arg_expr.meta.container_column,
+                            'end_line': arg_expr.meta.container_end_line,
+                            'end_column': arg_expr.meta.container_end_column,
+                        }]
+                    }
+                ))
+            case _:
+                raise Exception(f"Invalid arg expr {arg_expr}")
+    return records
+
+def records_from_kv_args(rule_id, fncall_id, fncall_type, kv_args, idgen):
+    records = []
+    for arg in kv_args:
+        match arg:
+            case Tree(data=Token(type='RULE', value='kv_arg'), children=[
+                Token(type='IDENTIFIER', value=key),
+                Tree(data=Token(type='RULE', value='expr'), children=[expr]),
+            ]):
+                expr_id = f'ex{next(idgen)}'
+                expr_type, expr_records = records_from_expr(expr, rule_id, expr_id, idgen)
+                records.append(merge_records(
+                    expr_records,
+                    {
+                        'fn_kv_arg': [{
+                            'rule_id': rule_id,
+                            'fncall_id': fncall_id,
+                            'fncall_expr_type': fncall_type,
+                            'key': key,
+                            'expr_id': expr_id,
+                            'expr_type': expr_type,
+
+                            'start_line': arg.meta.container_line,
+                            'start_column': arg.meta.container_column,
+                            'end_line': arg.meta.container_end_line,
+                            'end_column': arg.meta.container_end_column,
+                        }]
+                    }
+                ))
+            case _:
+                raise Exception(f"Invalid arg expr {arg}")
+    return records
+
+
+
+def records_from_aggregated_expr(aggr_expr, rule_id, expr_id, fn_name, fn_args, idgen):
+    # print(f"{fn_name} {fn_args}")
+    fncall_id = f'fn{next(idgen)}'
+    match fn_args:
+        case None:
+            return {
+                'aggr_expr': [{
+                    'rule_id': rule_id,
+                    'expr_id': expr_id,
+                    'fn_name': fn_name,
+                    'fncall_id': fncall_id,
+
+                    'start_line': aggr_expr.meta.container_line,
+                    'start_column': aggr_expr.meta.container_column,
+                    'end_line': aggr_expr.meta.container_end_line,
+                    'end_column': aggr_expr.meta.container_end_column,
+                }]
+            }
+        case [Tree(data=Token(type='RULE', value='val_args'), children=val_args)]:
+            return functools.reduce(
+                merge_records,[
+                    *records_from_val_args(rule_id, fncall_id, 'aggr_expr', val_args, idgen),
+                    {
+                        'aggr_expr': [{
+                            'rule_id': rule_id,
+                            'expr_id': expr_id,
+                            'fn_name': fn_name,
+                            'fncall_id': fncall_id,
+
+                            'start_line': aggr_expr.meta.container_line,
+                            'start_column': aggr_expr.meta.container_column,
+                            'end_line': aggr_expr.meta.container_end_line,
+                            'end_column': aggr_expr.meta.container_end_column,
+                        }]
+                    }
+                ]
+            )
+        case [
+            Tree(data=Token(type='RULE', value='val_args'), children=val_args),
+            Tree(data=Token(type='RULE', value='kv_args'), children=kv_args),
+        ]:
+            return functools.reduce(
+                merge_records,[
+                    *records_from_val_args(rule_id, fncall_id, 'aggr_expr', val_args, idgen),
+                    *records_from_kv_args(rule_id, fncall_id, 'aggr_expr', kv_args, idgen),
+                    {
+                        'aggr_expr': [{
+                            'rule_id': rule_id,
+                            'expr_id': expr_id,
+                            'fn_name': fn_name,
+                            'fncall_id': fncall_id,
+
+                            'start_line': aggr_expr.meta.container_line,
+                            'start_column': aggr_expr.meta.container_column,
+                            'end_line': aggr_expr.meta.container_end_line,
+                            'end_column': aggr_expr.meta.container_end_column,
+                        }]
+                    }
+                ]
+            )
+        case _:
+            raise Exception(f"Invalid fn args {fn_args}")
+    raise Exception("Not implemented")
 
 
 
@@ -40,6 +170,84 @@ def records_from_expr(expr, rule_id, expr_id, idgen):
                     'end_column': expr.end_column,
                 }]
             }
+        case Token(type='IDENTIFIER', value="NULL"):
+            return 'null_expr', {
+                'null_expr': [{
+                    'rule_id': rule_id,
+                    'expr_id': expr_id,
+
+                    'start_line': expr.line,
+                    'start_column': expr.column,
+                    'end_line': expr.end_line,
+                    'end_column': expr.end_column,
+                }]
+            }
+        case Token(type='IDENTIFIER', value=value):
+            return 'var_expr', {
+                'var_expr': [{
+                    'rule_id': rule_id,
+                    'expr_id': expr_id,
+                    'var_name': value,
+
+                    'start_line': expr.line,
+                    'start_column': expr.column,
+                    'end_line': expr.end_line,
+                    'end_column': expr.end_column,
+                }]
+            }
+        case Token(type='ESCAPED_STRING', value=value):
+            return 'str_expr', {
+                'str_expr': [{
+                    'rule_id': rule_id,
+                    'expr_id': expr_id,
+                    'value': value,
+
+                    'start_line': expr.line,
+                    'start_column': expr.column,
+                    'end_line': expr.end_line,
+                    'end_column': expr.end_column,
+                }]
+            }
+        case Tree(data=Token(type='RULE', value='binop_expr'), children=[
+            Tree(data=Token(type='RULE', value='expr'), children=[left_expr]),
+            Token(type=op_type, value=op),
+            Tree(data=Token(type='RULE', value='expr'), children=[right_expr]),
+        ]) if op_type in ['SPACED_BINOP', 'CMP_OP']:
+            left_expr_id = f'ex{next(idgen)}'
+            right_expr_id = f'ex{next(idgen)}'
+            left_expr_type, left_expr_records = records_from_expr(left_expr, rule_id, left_expr_id, idgen)
+            right_expr_type, right_expr_records = records_from_expr(right_expr, rule_id, right_expr_id, idgen)
+            return 'binop_expr', functools.reduce(
+                merge_records,
+                [
+                    left_expr_records,
+                    right_expr_records,
+                    {
+                        'binop_expr': [{
+                            'rule_id': rule_id,
+                            'expr_id': expr_id,
+                            'op': op,
+                            'left_expr_id': left_expr_id,
+                            'left_expr_type': left_expr_type,
+                            'right_expr_id': right_expr_id,
+                            'right_expr_type': right_expr_type,
+
+                            'start_line': expr.meta.container_line,
+                            'start_column': expr.meta.container_column,
+                            'end_line': expr.meta.container_end_line,
+                            'end_column': expr.meta.container_end_column,
+                        }]
+                    }
+                ])
+        case Tree(data=Token(type='RULE', value='aggregated_expr'), children=[
+            Token(type='IDENTIFIER', value=fn_name),
+            Tree(data=Token(type='RULE', value='fn_args'), children=fn_args),
+        ]):
+            return 'aggr_expr', records_from_aggregated_expr(expr, rule_id, expr_id, fn_name, fn_args, idgen)
+        case Tree(data=Token(type='RULE', value='aggregated_expr'), children=[
+            Token(type='IDENTIFIER', value=fn_name),
+        ]):
+            return 'aggr_expr', records_from_aggregated_expr(expr, rule_id, expr_id, fn_name, None, idgen)
         case _:
             raise Exception(f"Invalid expr {expr}")
 
@@ -48,7 +256,7 @@ def records_from_expr(expr, rule_id, expr_id, idgen):
 def records_from_fact_arg(fact_arg, rule_id, fact_id, idgen):
     expr_id = f'ex{next(idgen)}'
     match fact_arg:
-        case Tree(data=Token(type='RULE', value='arg'), children=[
+        case Tree(data=Token(type='RULE', value='kv_arg'), children=[
             Token(type='IDENTIFIER', value=key),            
         ]):
             return {
@@ -79,7 +287,7 @@ def records_from_body_stmt(index, stmt, rule_id, idgen):
     match stmt:
         case Tree(data=Token(type='RULE', value='fact'), children=[
             Token(type='IDENTIFIER', value=table_name),
-            Tree(data=Token(type='RULE', value='args'), children=fact_args),
+            Tree(data=Token(type='RULE', value='kv_args'), children=fact_args),
         ]):
             fact_id = f'ft{next(idgen)}'
             args_records = [records_from_fact_arg(fa, rule_id, fact_id, idgen) for fa in fact_args]
@@ -95,6 +303,31 @@ def records_from_body_stmt(index, stmt, rule_id, idgen):
                     'end_column': stmt.meta.container_end_column,
                 }] },
             ])
+        case Tree(data=Token(type='RULE', value='match_stmt'), children=[
+            Tree(data=Token(type='RULE', value='expr'), children=[left_expr]),
+            Tree(data=Token(type='RULE', value='expr'), children=[right_expr]),
+        ]):
+            match_id = f'mt{next(idgen)}'
+            left_expr_id = f'ex{next(idgen)}'
+            right_expr_id = f'ex{next(idgen)}'
+            left_expr_type, left_expr_records = records_from_expr(
+                left_expr, rule_id, left_expr_id, idgen)
+            right_expr_type, right_expr_records = records_from_expr(
+                right_expr, rule_id, right_expr_id, idgen)
+            return functools.reduce(merge_records, [
+                left_expr_records,
+                right_expr_records,
+                { 'body_match': [{
+                    'rule_id': rule_id, 'match_id': match_id,
+                    'left_expr_id': left_expr_id, 'left_expr_type': left_expr_type,
+                    'right_expr_id': right_expr_id, 'right_expr_type': right_expr_type,
+
+                    'start_line': stmt.meta.container_line,
+                    'start_column': stmt.meta.container_column,
+                    'end_line': stmt.meta.container_end_line,
+                    'end_column': stmt.meta.container_end_column,
+                }] },
+            ])
         case _:
             raise Exception(f"Invalid body stmt {stmt}")
 
@@ -103,7 +336,7 @@ def records_from_body_stmt(index, stmt, rule_id, idgen):
 def records_from_rule_param(rule_param, rule_id, idgen):
     expr_id = f'ex{next(idgen)}'
     match rule_param:
-        case Tree(data=Token(type='RULE', value='arg'), children=[
+        case Tree(data=Token(type='RULE', value='kv_arg'), children=[
             Token(type='IDENTIFIER', value=key),
             Tree(data=Token(type='RULE', value='expr'), children=[expr]),
         ]):
@@ -119,7 +352,7 @@ def records_from_rule_param(rule_param, rule_id, idgen):
                     'end_column': rule_param.meta.container_end_column,
                 }] },
             )
-        case Tree(data=Token(type='RULE', value='arg'), children=[
+        case Tree(data=Token(type='RULE', value='kv_arg'), children=[
             Token(type='IDENTIFIER', value=key),
         ]):
             return {
@@ -148,6 +381,7 @@ def records_from_rule_param(rule_param, rule_id, idgen):
 def records_from_rule_decl(rule_decl, original_source_path, table_name, rule_params, body_stmts, idgen):
     rule_id = f'ru{next(idgen)}'
     param_records = [records_from_rule_param(rp, rule_id, idgen) for rp in rule_params]
+    # print(f"params_recorsd {param_records}")
     body_stmts_records = [records_from_body_stmt(i, bs, rule_id, idgen) for (i, bs) in enumerate(body_stmts)]
     return functools.reduce(merge_records, [
         *param_records,
@@ -170,15 +404,31 @@ def records_from_toplevel_decls(toplevel_decl, original_source_path, idgen):
     match toplevel_decl:
         case Tree(data=Token(type='RULE', value='rule'), children=[
             Token(type='IDENTIFIER', value=table_name),
-            Tree(data=Token(type='RULE', value='args'), children=rule_params),
+            Tree(data=Token(type='RULE', value='kv_args'), children=rule_params),
         ]):
-            return records_from_rule_decl(toplevel_decl, original_source_path, table_name, rule_params, [], idgen)
+            return records_from_rule_decl(
+                toplevel_decl, original_source_path, table_name, rule_params, [], idgen)
         case Tree(data=Token(type='RULE', value='rule'), children=[
             Token(type='IDENTIFIER', value=table_name),
-            Tree(data=Token(type='RULE', value='args'), children=rule_params),
+            Tree(data=Token(type='RULE', value='kv_args'), children=rule_params),
             Tree(data=Token(type='RULE', value='body_stmt'), children=[body_stmt]),
         ]):
-            return records_from_rule_decl(toplevel_decl, original_source_path, table_name, rule_params, [body_stmt], idgen)
+            return records_from_rule_decl(
+                toplevel_decl, original_source_path, table_name, rule_params, [body_stmt], idgen)
+        case Tree(data=Token(type='RULE', value='rule'), children=[
+            Token(type='IDENTIFIER', value=table_name),
+            Tree(data=Token(type='RULE', value='kv_args'), children=rule_params),
+            Tree(data=Token(type='RULE', value='multiline_body'), children=children),
+        ]):
+            body_stmts = []
+            for child in children:
+                match child:
+                    case Tree(data=Token(type='RULE', value='body_stmt'), children=[body_stmt]):
+                        body_stmts.append(body_stmt)
+                    case _:
+                        raise Exception(f"Invalid body stmt {child}")
+            return records_from_rule_decl(
+                toplevel_decl, original_source_path, table_name, rule_params, body_stmts, idgen)
         case _:
             raise Exception(f"Invalid toplevel decl {toplevel_decl}")
 

@@ -9,7 +9,7 @@ aggregated(
 	at_least_one_without_age:, at_least_one_older_than_18:,
 	name_of_the_oldest:, name_of_the_youngest:
 ) <-
-	person(age:)
+	person(age:, name:)
 	max_age := max<age>
 	at_least_one_without_age := some<age is NULL>
 	at_least_one_older_than_18 := some<older_than_18>
@@ -29,4 +29,4 @@ aggregated_by_country(
 	older_than_18 := age >= 18
 	at_least_one_without_age := some<age is NULL>
 	name_of_the_youngest := argmin<name, by: age>
-	person(age:, country:)
+	person(name:, age:, country:)

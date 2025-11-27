@@ -130,14 +130,13 @@ CREATE MATERIALIZED VIEW substituted_sql_expr AS
     GROUP BY a.pipeline_id, a.rule_id, a.expr_id;
 
 /*
+# all aggregate functions are mapped here
+# because arguments that they accept vary a lot
 substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
-    aggr_expr(pipeline_id:, rule_id:, expr_id:, fn_name: "count", arg_var: NULL)
+    aggr_expr(pipeline_id:, rule_id:, expr_id:, fn_name: "count", fncall_id:)
+    not fn_val_arg(pipeline_id:, rule_id:, fncall_id:)
+    not fn_kv_arg(pipeline_id:, rule_id:, fncall_id:)
     sql := "COUNT(*)"
-substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
-    aggr_expr(pipeline_id:, rule_id:, expr_id:, fn_name:, arg_var: var_name)
-    canonical_var_bound_sql(pipeline_id:, rule_id:, var_name:, sql: var_sql)
-    aggr_fn_name(fn_name:, sql_fn_name:)
-    sql := `{{sql_fn_name}}({{var_sql}})`
 */
 DECLARE RECURSIVE VIEW substituted_aggr_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT);
 CREATE MATERIALIZED VIEW substituted_aggr_expr AS
@@ -147,22 +146,21 @@ CREATE MATERIALIZED VIEW substituted_aggr_expr AS
         a.expr_id,
         'COUNT(*)' AS sql
     FROM aggr_expr AS a
-    WHERE a.fn_name = 'count' AND a.arg_var IS NULL
-
-    UNION
-
-    SELECT DISTINCT
-        a.pipeline_id,
-        a.rule_id,
-        a.expr_id,
-        (aggr_fn_name.sql_fn_name || '(' || canonical_var_bound_sql.sql || ')') AS sql
-    FROM aggr_expr AS a
-    JOIN canonical_var_bound_sql
-        ON a.pipeline_id = canonical_var_bound_sql.pipeline_id
-        AND a.rule_id = canonical_var_bound_sql.rule_id
-        AND a.arg_var = canonical_var_bound_sql.var_name
-    JOIN aggr_fn_name
-        ON a.fn_name = aggr_fn_name.fn_name;
+    WHERE a.fn_name = 'count'
+    AND NOT EXISTS (
+        SELECT 1
+        FROM fn_val_arg
+        WHERE a.pipeline_id = fn_val_arg.pipeline_id
+        AND a.rule_id = fn_val_arg.rule_id
+        AND a.fncall_id = fn_val_arg.fncall_id
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM fn_kv_arg
+        WHERE a.pipeline_id = fn_kv_arg.pipeline_id
+        AND a.rule_id = fn_kv_arg.rule_id
+        AND a.fncall_id = fn_kv_arg.fncall_id
+    );
 
 DECLARE RECURSIVE VIEW substituted_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, expr_type TEXT, sql TEXT, aggregated BOOLEAN);
 

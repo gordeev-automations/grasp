@@ -470,7 +470,20 @@ var_mentioned_in_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, a
     var_expr(pipeline_id:, rule_id:, expr_id:, var_name:)
     expr_type := "var_expr"
 var_mentioned_in_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "") <-
-    aggr_expr(pipeline_id:, rule_id:, expr_id:, arg_var: var_name)
+    aggr_expr(pipeline_id:, rule_id:, expr_id:, fncall_id:)
+    fn_val_arg(
+        pipeline_id:, rule_id:, fncall_id:, expr_id: arg_expr_id, expr_type: arg_expr_type)
+    var_mentioned_in_expr(
+        pipeline_id:, rule_id:, expr_id: arg_expr_id, expr_type: arg_expr_type,
+        var_name:)
+    expr_type := 'aggr_expr'
+var_mentioned_in_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "") <-
+    aggr_expr(pipeline_id:, rule_id:, expr_id:, fncall_id:)
+    fn_kv_arg(
+        pipeline_id:, rule_id:, fncall_id:, expr_id: arg_expr_id, expr_type: arg_expr_type)
+    var_mentioned_in_expr(
+        pipeline_id:, rule_id:, expr_id: arg_expr_id, expr_type: arg_expr_type,
+        var_name:)
     expr_type := 'aggr_expr'
 var_mentioned_in_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "") <-
     var_mentioned_in_sql_expr(pipeline_id:, rule_id:, expr_id:, var_name:)
@@ -508,9 +521,38 @@ CREATE MATERIALIZED VIEW var_mentioned_in_expr AS
         aggr_expr.rule_id,
         aggr_expr.expr_id,
         'aggr_expr' AS expr_type,
-        aggr_expr.arg_var AS var_name,
+        var_mentioned_in_expr.var_name,
         '' AS access_prefix
     FROM aggr_expr
+    JOIN fn_val_arg
+        ON aggr_expr.pipeline_id = fn_val_arg.pipeline_id
+        AND aggr_expr.rule_id = fn_val_arg.rule_id
+        AND aggr_expr.fncall_id = fn_val_arg.fncall_id
+    JOIN var_mentioned_in_expr
+        ON fn_val_arg.pipeline_id = var_mentioned_in_expr.pipeline_id
+        AND fn_val_arg.rule_id = var_mentioned_in_expr.rule_id
+        AND fn_val_arg.expr_id = var_mentioned_in_expr.expr_id
+        AND fn_val_arg.expr_type = var_mentioned_in_expr.expr_type
+    
+    UNION
+
+    SELECT DISTINCT
+        aggr_expr.pipeline_id,
+        aggr_expr.rule_id,
+        aggr_expr.expr_id,
+        'aggr_expr' AS expr_type,
+        var_mentioned_in_expr.var_name,
+        '' AS access_prefix
+    FROM aggr_expr
+    JOIN fn_kv_arg
+        ON aggr_expr.pipeline_id = fn_kv_arg.pipeline_id
+        AND aggr_expr.rule_id = fn_kv_arg.rule_id
+        AND aggr_expr.fncall_id = fn_kv_arg.fncall_id
+    JOIN var_mentioned_in_expr
+        ON fn_kv_arg.pipeline_id = var_mentioned_in_expr.pipeline_id
+        AND fn_kv_arg.rule_id = var_mentioned_in_expr.rule_id
+        AND fn_kv_arg.expr_id = var_mentioned_in_expr.expr_id
+        AND fn_kv_arg.expr_type = var_mentioned_in_expr.expr_type
 
     UNION
 
