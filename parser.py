@@ -289,6 +289,7 @@ def records_from_body_stmt(index, stmt, rule_id, idgen):
             Token(type='IDENTIFIER', value=table_name),
             Tree(data=Token(type='RULE', value='kv_args'), children=fact_args),
         ]):
+            print(f"fact: {stmt}")
             fact_id = f'ft{next(idgen)}'
             args_records = [records_from_fact_arg(fa, rule_id, fact_id, idgen) for fa in fact_args]
             return functools.reduce(merge_records, [
@@ -451,7 +452,14 @@ def parse(text, original_path):
     # propagate token positions: line, column, end_line, end_col.
     # https://github.com/lark-parser/lark/issues/12#issuecomment-304404835
     parser = Lark(grammar_text, parser="earley", propagate_positions=True)
-    tree = parser.parse(text)
+    # for simplicity of grammar, always insert new lines in the beginnging of the file
+    # and in the end
+    # for tok in parser.lex("\n" + text + "\n"):
+    #     print(f"TOKEN: {repr(tok)}")
+
+    tree = parser.parse("\n" + text + "\n")
+    print(f'\n\ntree:\n{tree}\n\n')
+    print(f'\n\ntree:\n{tree.pretty()}\n\n')
     idgen = natural_num_generator()
     return records_from_tree(tree, original_path, idgen)
 
