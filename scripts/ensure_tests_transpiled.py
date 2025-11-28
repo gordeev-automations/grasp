@@ -85,7 +85,7 @@ async def main(testcases_paths):
                         case {'status': 'inprogress'}:
                             pass
                         case {'status': 'complete'}:
-                            print(f"Insert completed: {token}")
+                            # print(f"Insert completed: {token}")
                             tokens.remove(token)
                         case _:
                             raise Exception(f"Unknown ingest status: {status}")

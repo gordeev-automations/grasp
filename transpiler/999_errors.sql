@@ -65,6 +65,25 @@ CREATE MATERIALIZED VIEW "error:match_right_expr_unresolved" AS
         AND expr_type = body_match.left_expr_type
     );
 
+/*
+error:invalid_aggr_expr(pipeline_id:, rule_id:, expr_id:) <-
+    aggr_expr(pipeline_id:, rule_id:, expr_id:)
+    not aggr_expr_matching_signature(pipeline_id:, rule_id:, expr_id:)
+*/
+CREATE MATERIALIZED VIEW "error:invalid_aggr_expr" AS
+    SELECT DISTINCT
+        aggr_expr.pipeline_id,
+        aggr_expr.rule_id,
+        aggr_expr.expr_id
+    FROM aggr_expr
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM aggr_expr_matching_signature
+        WHERE aggr_expr.pipeline_id = aggr_expr_matching_signature.pipeline_id
+        AND aggr_expr.rule_id = aggr_expr_matching_signature.rule_id
+        AND aggr_expr.expr_id = aggr_expr_matching_signature.expr_id
+    );
+
 
 
 /*
@@ -74,6 +93,8 @@ error(pipeline_id:, error_type: "neg_fact_sql_unresolved") <-
     error:neg_fact_sql_unresolved(pipeline_id:)
 error(pipeline_id:, error_type: "match_right_expr_unresolved") <-
     error:match_right_expr_unresolved(pipeline_id:)
+error(pipeline_id:, error_type: "invalid_aggr_expr") <-
+    error:invalid_aggr_expr(pipeline_id:)
 */
 CREATE MATERIALIZED VIEW "error" AS
     SELECT DISTINCT
@@ -93,5 +114,12 @@ CREATE MATERIALIZED VIEW "error" AS
     SELECT DISTINCT
         "error:match_right_expr_unresolved".pipeline_id AS pipeline_id,
         'match_right_expr_unresolved' AS error_type
-    FROM "error:match_right_expr_unresolved";
+    FROM "error:match_right_expr_unresolved"
+    
+    UNION
+    
+    SELECT DISTINCT
+        "error:invalid_aggr_expr".pipeline_id AS pipeline_id,
+        'invalid_aggr_expr' AS error_type
+    FROM "error:invalid_aggr_expr";
 

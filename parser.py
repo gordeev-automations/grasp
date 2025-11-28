@@ -200,7 +200,7 @@ def records_from_expr(expr, rule_id, expr_id, idgen):
                 'str_expr': [{
                     'rule_id': rule_id,
                     'expr_id': expr_id,
-                    'value': value,
+                    'value': value[1:-1],
 
                     'start_line': expr.line,
                     'start_column': expr.column,
@@ -458,8 +458,8 @@ def parse(text, original_path):
     #     print(f"TOKEN: {repr(tok)}")
 
     tree = parser.parse("\n" + text + "\n")
-    print(f'\n\ntree:\n{tree}\n\n')
-    print(f'\n\ntree:\n{tree.pretty()}\n\n')
+    # print(f'\n\ntree:\n{tree}\n\n')
+    # print(f'\n\ntree:\n{tree.pretty()}\n\n')
     idgen = natural_num_generator()
     return records_from_tree(tree, original_path, idgen)
 
