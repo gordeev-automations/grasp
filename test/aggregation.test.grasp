@@ -30,3 +30,13 @@ aggregated_by_country(
 	at_least_one_without_age := some<age is NULL>
 	name_of_the_youngest := argmin<name, by: age>
 	person(name:, age:, country:)
+
+# one conditional involves aggregated value, and must go to HAVING clause
+# the other goes to WHERE clause
+countries_having_more_than_one_non_sergey(
+	country:, count:,
+) <-
+	person(country:, name:)
+	count := count<>
+	count > 1
+	name != "Sergey"
