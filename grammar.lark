@@ -1,4 +1,4 @@
-start: _WS* _NEWLINE (rule | _WS_INLINE* _NEWLINE)* _WS*
+start: _WS* _NEWLINE (rule | _WS_INLINE* _NEWLINE | _COMMENT)* _WS*
 
 rule: IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")" _WS_INLINE* "<-" _WS_INLINE* _NEWLINE multiline_body
     | IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")" _WS_INLINE* "<-" _WS_INLINE* body_stmt
@@ -23,6 +23,7 @@ CMP_OP: "=" | ">" | "<" | ">=" | "<="
 SPACED_BINOP: "is"
 IDENTIFIER: LETTER ("_"|LETTER|DIGIT)* (":" LETTER ("_"|LETTER|DIGIT)*)?
 
+_COMMENT: "#" /[^#]/* _NEWLINE
 _WS: WS
 _WS_INLINE: WS_INLINE
 _NEWLINE: NEWLINE
