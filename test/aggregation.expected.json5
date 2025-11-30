@@ -39,4 +39,13 @@
     countries_having_more_than_one_non_sergey: [
         { country: "Russia", count: 2 },
     ],
+
+    countries_that_have_people_over_18: [
+        { country: "Belarus" },
+    ],
+
+    countries_that_do_not_have_people_over_18: [
+        { country: "Russia" },
+        { country: "Ukraine" },
+    ]
 }

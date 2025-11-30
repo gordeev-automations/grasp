@@ -261,8 +261,12 @@ CREATE MATERIALIZED VIEW fact_alias AS
 
 /*
 first_fact_alias(
-    pipeline_id:, rule_id:, table_name: argmin<table_name, fact_index>, alias: argmin<alias, fact_index>,
-    negated:, fact_index: min<fact_index>
+    pipeline_id:, rule_id:,
+    fact_id: argmin<fact_id, fact_index>,
+    table_name: argmin<table_name, fact_index>,
+    alias: argmin<alias, fact_index>,
+    negated:,
+    fact_index: min<fact_index>
 ) <-
     fact_alias(pipeline_id:, rule_id:, table_name:, alias:, negated:, fact_index:)
     #all_records_inserted(pipeline_id:)
@@ -303,6 +307,46 @@ CREATE MATERIALIZED VIEW adjacent_facts AS
         AND prev_fact.negated = next_fact.negated
     WHERE prev_fact.fact_index < next_fact.fact_index
     GROUP BY prev_fact.pipeline_id, prev_fact.rule_id, prev_fact.negated, prev_fact.fact_id;
+
+/*
+last_fact_alias(pipeline_id:, rule_id:, fact_id:, negated:) <-
+    adjacent_facts(pipeline_id:, rule_id:, negated:, next_fact_id: fact_id)
+    not adjacent_facts(pipeline_id:, rule_id:, negated:, prev_fact_id: fact_id)
+last_fact_alias(pipeline_id:, rule_id:, fact_id:, negated:) <-
+    first_fact_alias(pipeline_id:, rule_id:, fact_id:, negated:)
+    not adjacent_facts(pipeline_id:, rule_id:, negated:)
+*/
+CREATE MATERIALIZED VIEW last_fact_alias AS
+    SELECT DISTINCT
+        adjacent_facts.pipeline_id,
+        adjacent_facts.rule_id,
+        adjacent_facts.next_fact_id AS fact_id,
+        adjacent_facts.negated
+    FROM adjacent_facts
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM adjacent_facts AS prev_adjacent_facts
+        WHERE adjacent_facts.pipeline_id = prev_adjacent_facts.pipeline_id
+        AND adjacent_facts.rule_id = prev_adjacent_facts.rule_id
+        AND adjacent_facts.negated = prev_adjacent_facts.negated
+        AND prev_adjacent_facts.prev_fact_id = adjacent_facts.next_fact_id
+    )
+    
+    UNION
+    
+    SELECT DISTINCT
+        first_fact_alias.pipeline_id,
+        first_fact_alias.rule_id,
+        first_fact_alias.fact_id,
+        first_fact_alias.negated
+    FROM first_fact_alias
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM adjacent_facts
+        WHERE first_fact_alias.pipeline_id = adjacent_facts.pipeline_id
+        AND first_fact_alias.rule_id = adjacent_facts.rule_id
+        AND first_fact_alias.negated = adjacent_facts.negated
+    );
 
 /*
 constant_rule(pipeline_id:, rule_id:) <-

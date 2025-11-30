@@ -292,6 +292,18 @@ CREATE TABLE body_match (
     end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
+CREATE TABLE body_expr (
+    pipeline_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    expr_id TEXT NOT NULL,
+    expr_type TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
+) WITH ('materialized' = 'true');
+
 CREATE TABLE body_sql_cond (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,

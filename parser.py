@@ -289,7 +289,7 @@ def records_from_body_stmt(index, stmt, rule_id, idgen):
             Token(type='IDENTIFIER', value=table_name),
             Tree(data=Token(type='RULE', value='kv_args'), children=fact_args),
         ]):
-            print(f"fact: {stmt}")
+            # print(f"fact: {stmt}")
             fact_id = f'ft{next(idgen)}'
             args_records = [records_from_fact_arg(fa, rule_id, fact_id, idgen) for fa in fact_args]
             return functools.reduce(merge_records, [
@@ -297,6 +297,25 @@ def records_from_body_stmt(index, stmt, rule_id, idgen):
                 { 'body_fact': [{
                     'rule_id': rule_id, 'fact_id': fact_id, 'index': index,
                     'table_name': table_name, 'negated': False,
+
+                    'start_line': stmt.meta.container_line,
+                    'start_column': stmt.meta.container_column,
+                    'end_line': stmt.meta.container_end_line,
+                    'end_column': stmt.meta.container_end_column,
+                }] },
+            ])
+        case Tree(data=Token(type='RULE', value='negated_fact'), children=[
+            Token(type='IDENTIFIER', value=table_name),
+            Tree(data=Token(type='RULE', value='kv_args'), children=fact_args),
+        ]):
+            # print(f"fact: {stmt}")
+            fact_id = f'ft{next(idgen)}'
+            args_records = [records_from_fact_arg(fa, rule_id, fact_id, idgen) for fa in fact_args]
+            return functools.reduce(merge_records, [
+                *args_records,
+                { 'body_fact': [{
+                    'rule_id': rule_id, 'fact_id': fact_id, 'index': index,
+                    'table_name': table_name, 'negated': True,
 
                     'start_line': stmt.meta.container_line,
                     'start_column': stmt.meta.container_column,
@@ -329,8 +348,26 @@ def records_from_body_stmt(index, stmt, rule_id, idgen):
                     'end_column': stmt.meta.container_end_column,
                 }] },
             ])
+        case Tree(data=Token(type='RULE', value='expr'), children=[expr]):
+            # if it is not a fact and not match,
+            # then it must be an expression, that must evaluate to bool
+            expr_id = f'ex{next(idgen)}'
+            expr_type, expr_records = records_from_expr(expr, rule_id, expr_id, idgen)
+            return functools.reduce(merge_records, [
+                expr_records,
+                {
+                    'body_expr': [{
+                        'rule_id': rule_id, 'expr_id': expr_id, 'expr_type': expr_type,
+
+                        'start_line': stmt.meta.container_line,
+                        'start_column': stmt.meta.container_column,
+                        'end_line': stmt.meta.container_end_line,
+                        'end_column': stmt.meta.container_end_column,
+                    }]
+                }
+            ])
         case _:
-            raise Exception(f"Invalid body stmt {stmt}")
+            raise Exception(f"Invalid body stmt {stmt}")    
 
 
 
@@ -462,7 +499,3 @@ def parse(text, original_path):
     # print(f'\n\ntree:\n{tree.pretty()}\n\n')
     idgen = natural_num_generator()
     return records_from_tree(tree, original_path, idgen)
-
-# import importlib
-# import parser
-# importlib.reload(parser); records = parser.parse(open('test/basic.test.grasp', 'r').read()); print(records)

@@ -40,3 +40,11 @@ countries_having_more_than_one_non_sergey(
 	count := count<>
 	count > 1
 	name != "Sergey"
+
+countries_that_have_people_over_18(country:) <-
+	person(country:, age:)
+	18 < max<age>
+
+countries_that_do_not_have_people_over_18(country:) <-
+	person(country:)
+	not countries_that_have_people_over_18(country:)
