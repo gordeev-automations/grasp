@@ -700,10 +700,10 @@ neg_fact_where_cond(pipeline_id:, rule_id:, fact_id:, sql_lines:) <-
     [first_cond, *rest_cond] := array<`"{{alias}}"."{{key}}" = {{expr_sql}}`>
     sql_lines := [
         "NOT EXISTS (SELECT 1",
-        `FROM "{{output_table_name}}" AS "{{alias}}"`,
-        `WHERE {{first_cond}}`,
-        *map(rest_cond, x -> `AND {{x}}`),
-        ")",
+        `    FROM "{{output_table_name}}" AS "{{alias}}"`,
+        `    WHERE {{first_cond}}`,
+        *map(rest_cond, x -> `        AND {{x}}`),
+        "  )",
     ]
 */
 CREATE MATERIALIZED VIEW neg_fact_where_cond AS
@@ -714,15 +714,15 @@ CREATE MATERIALIZED VIEW neg_fact_where_cond AS
         ARRAY_CONCAT(
             ARRAY[
                 'NOT EXISTS (SELECT 1',
-                ('FROM "' || output_table_name.output_table_name || '" AS "' || fact_alias.alias || '"'),
-                ('WHERE ' || ARRAY_AGG('"' || fact_alias.alias || '"."' || fact_arg.key || '" = ' || substituted_expr.sql)[1])
+                ('    FROM "' || output_table_name.output_table_name || '" AS "' || fact_alias.alias || '"'),
+                ('    WHERE ' || ARRAY_AGG('"' || fact_alias.alias || '"."' || fact_arg.key || '" = ' || substituted_expr.sql)[1])
             ],
             TRANSFORM(
                 TEXT_ARRAY_DROP_LEFT(
                     ARRAY_AGG('"' || fact_alias.alias || '"."' || fact_arg.key || '" = ' || substituted_expr.sql),
                     CAST(1 AS INTEGER UNSIGNED)),
-                x -> 'AND ' || x),
-            ARRAY[')']
+                x -> '        AND ' || x),
+            ARRAY['  )']
         ) AS sql_lines
     FROM fact_alias
     JOIN output_table_name
@@ -750,7 +750,7 @@ neg_fact_where_cond_concatenated(pipeline_id:, rule_id:, fact_id:, sql_lines:) <
     adjacent_facts(pipeline_id:, rule_id:, prev_fact_id:, next_fact_id: fact_id)
     neg_fact_where_cond(pipeline_id:, rule_id:, fact_id:, sql_lines: next_sql_lines)
     [first_line, *rest_lines] := next_sql_lines
-    sql_lines := [*prev_sql_lines, `AND {{first_line}}`, *rest_lines]
+    sql_lines := [*prev_sql_lines, `    AND {{first_line}}`, *rest_lines]
 */
 DECLARE RECURSIVE VIEW neg_fact_where_cond_concatenated (pipeline_id TEXT, rule_id TEXT, fact_id TEXT, sql_lines TEXT ARRAY);
 CREATE MATERIALIZED VIEW neg_fact_where_cond_concatenated AS
@@ -769,7 +769,7 @@ CREATE MATERIALIZED VIEW neg_fact_where_cond_concatenated AS
         neg_fact_where_cond_concatenated.fact_id,
         ARRAY_CONCAT(
             neg_fact_where_cond_concatenated.sql_lines,
-            ARRAY['AND ' || neg_fact_where_cond.sql_lines[1]],
+            ARRAY['    AND ' || neg_fact_where_cond.sql_lines[1]],
             TEXT_ARRAY_DROP_LEFT(neg_fact_where_cond.sql_lines, CAST(1 AS INTEGER UNSIGNED))
         ) AS sql_lines
     FROM neg_fact_where_cond_concatenated
@@ -802,23 +802,23 @@ CREATE MATERIALIZED VIEW neg_facts_where_conds_full AS
 full_where_cond_sql(pipeline_id:, rule_id:, sql_lines:) <-
     neg_facts_where_conds_full(pipeline_id:, rule_id:, sql_lines: [first_line, *rest_lines])
     not where_cond(pipeline_id:, rule_id:)
-    sql_lines := [`WHERE {{first_line}}`, *rest_lines]
+    sql_lines := [`  WHERE {{first_line}}`, *rest_lines]
 full_where_cond_sql(pipeline_id:, rule_id:, sql_lines:) <-
     where_cond(pipeline_id:, rule_id:, sql:)
     not neg_facts_where_conds_full(pipeline_id:, rule_id:)
     [first_line, *rest_lines] := array<sql>
     sql_lines := [
-        `WHERE {{first_line}}`,
-        *map((sql_line) -> `AND {{sql_line}}`, rest_lines),
+        `  WHERE {{first_line}}`,
+        *map((sql_line) -> `    AND {{sql_line}}`, rest_lines),
     ]
 full_where_cond_sql(pipeline_id:, rule_id:, sql_lines:) <-
     neg_facts_where_conds_full(pipeline_id:, rule_id:, sql_lines: [first_line, *rest_lines])
     where_cond(pipeline_id:, rule_id:, sql:)
     cond_lines := array<sql>
     sql_lines := [
-        `WHERE {{first_line}}`,
+        `  WHERE {{first_line}}`,
         *rest_lines,
-        *map((sql_line) -> `AND {{sql_line}}`, cond_lines),
+        *map((sql_line) -> `    AND {{sql_line}}`, cond_lines),
     ]
 full_where_cond_sql(pipeline_id:, rule_id:, sql_lines:) <-
     rule(pipeline_id:, rule_id:)
@@ -831,7 +831,7 @@ CREATE MATERIALIZED VIEW full_where_cond_sql AS
         neg_facts_where_conds_full.pipeline_id,
         neg_facts_where_conds_full.rule_id,
         ARRAY_CONCAT(
-            ARRAY['WHERE ' || neg_facts_where_conds_full.sql_lines[1]],
+            ARRAY['  WHERE ' || neg_facts_where_conds_full.sql_lines[1]],
             TEXT_ARRAY_DROP_LEFT(neg_facts_where_conds_full.sql_lines, CAST(1 AS INTEGER UNSIGNED))
         ) AS sql_lines
     FROM neg_facts_where_conds_full
@@ -848,10 +848,10 @@ CREATE MATERIALIZED VIEW full_where_cond_sql AS
         where_cond.pipeline_id,
         where_cond.rule_id,
         ARRAY_CONCAT(
-            ARRAY['WHERE ' || ARRAY_AGG(where_cond.sql)[1]],
+            ARRAY['  WHERE ' || ARRAY_AGG(where_cond.sql)[1]],
             TRANSFORM(
                 TEXT_ARRAY_DROP_LEFT(ARRAY_AGG(where_cond.sql), CAST(1 AS INTEGER UNSIGNED)),
-                (sql_line) -> 'AND ' || sql_line)
+                (sql_line) -> '    AND ' || sql_line)
         ) AS sql_lines
     FROM where_cond
     WHERE NOT EXISTS (
@@ -868,11 +868,11 @@ CREATE MATERIALIZED VIEW full_where_cond_sql AS
         neg_facts_where_conds_full.pipeline_id,
         neg_facts_where_conds_full.rule_id,
         ARRAY_CONCAT(
-            ARRAY['WHERE ' || neg_facts_where_conds_full.sql_lines[1]],
+            ARRAY['  WHERE ' || neg_facts_where_conds_full.sql_lines[1]],
             TEXT_ARRAY_DROP_LEFT(neg_facts_where_conds_full.sql_lines, CAST(1 AS INTEGER UNSIGNED)),
             TRANSFORM(
                 ARRAY_AGG(where_cond.sql),
-                (sql_line) -> 'AND ' || sql_line)
+                (sql_line) -> '    AND ' || sql_line)
         ) AS sql_lines
     FROM neg_facts_where_conds_full
     JOIN where_cond
@@ -926,8 +926,8 @@ having_cond_sql(pipeline_id:, rule_id:, sql_lines:) <-
     having_cond(pipeline_id:, rule_id:, sql:)
     [first_sql, *rest_sql] := array<sql>
     sql_lines := [
-        `HAVING {{first_sql}}`,
-        *map(rest_sql, (sql) -> `AND {{sql}}`),
+        `  HAVING {{first_sql}}`,
+        *map(rest_sql, (sql) -> `    AND {{sql}}`),
     ]
 */
 CREATE MATERIALIZED VIEW having_cond_sql AS
@@ -949,10 +949,10 @@ CREATE MATERIALIZED VIEW having_cond_sql AS
         having_cond.pipeline_id,
         having_cond.rule_id,
         ARRAY_CONCAT(
-            ARRAY['HAVING ' || ARRAY_AGG(having_cond.sql)[1]],
+            ARRAY['  HAVING ' || ARRAY_AGG(having_cond.sql)[1]],
             TRANSFORM(
                 TEXT_ARRAY_DROP_LEFT(ARRAY_AGG(having_cond.sql), CAST(1 AS INTEGER UNSIGNED)),
-                (sql_line) -> 'AND ' || sql_line)
+                (sql_line) -> '    AND ' || sql_line)
         ) AS sql_lines
     FROM having_cond
     GROUP BY having_cond.pipeline_id, having_cond.rule_id;
@@ -983,14 +983,14 @@ CREATE MATERIALIZED VIEW var_join AS
 rule_join_sql(pipeline_id:, rule_id:, fact_id:, sql_lines:) <-
     first_fact_alias(pipeline_id:, rule_id:, fact_id:, table_name:, alias:, negated: false)
     output_table_name(pipeline_id:, table_name:, output_table_name:)
-    sql_lines := [`FROM "{{output_table_name}}" AS "{{alias}}"`]
+    sql_lines := [`  FROM "{{output_table_name}}" AS "{{alias}}"`]
 rule_join_sql(pipeline_id:, rule_id:, fact_id:, sql_lines:) <-
     rule_join_sql(pipeline_id:, rule_id:, fact_id: prev_fact_id, sql_lines: prev_sql_lines)
     adjacent_facts(pipeline_id:, rule_id:, prev_fact_id:, next_fact_id:)
     fact_alias(pipeline_id:, rule_id:, table_name:, fact_id: next_fact_id, alias: next_alias)
     output_table_name(pipeline_id:, table_name:, output_table_name:)
     not var_join(pipeline_id:, rule_id:, fact_id: next_fact_id)
-    sql_lines := [*prev_sql_lines, `CROSS JOIN "{{output_table_name}}" AS "{{next_alias}}"`]
+    sql_lines := [*prev_sql_lines, `  CROSS JOIN "{{output_table_name}}" AS "{{next_alias}}"`]
 rule_join_sql(pipeline_id:, rule_id:, fact_id: next_fact_id, sql_lines:) <-
     rule_join_sql(pipeline_id:, rule_id:, fact_id: prev_fact_id, sql_lines: prev_sql_lines)
     adjacent_facts(pipeline_id:, rule_id:, prev_fact_id:, next_fact_id:)
@@ -1000,8 +1000,8 @@ rule_join_sql(pipeline_id:, rule_id:, fact_id: next_fact_id, sql_lines:) <-
     [first_cond, *rest_conds] := array<sql>
     sql_lines := [
         *prev_sql_lines,
-        `JOIN "{{output_table_name}}" AS "{{next_alias}}"`,
-        `ON {{first_cond}}`,
+        `  JOIN "{{output_table_name}}" AS "{{next_alias}}"`,
+        `    ON {{first_cond}}`,
         *map(rest_conds, x -> `AND {{x}}`),
     ]
 */
@@ -1026,7 +1026,7 @@ CREATE MATERIALIZED VIEW rule_join_sql AS
         next_fact_alias.fact_id,
         ARRAY_CONCAT(
             prev_rule_join_sql.sql_lines,
-            ARRAY['CROSS JOIN "' || output_table_name.output_table_name || '" AS "' || next_fact_alias.alias || '"']) AS sql_lines
+            ARRAY['  CROSS JOIN "' || output_table_name.output_table_name || '" AS "' || next_fact_alias.alias || '"']) AS sql_lines
     FROM rule_join_sql AS prev_rule_join_sql
     JOIN adjacent_facts
         ON prev_rule_join_sql.pipeline_id = adjacent_facts.pipeline_id
@@ -1055,13 +1055,13 @@ CREATE MATERIALIZED VIEW rule_join_sql AS
         next_fact_alias.fact_id,
         ARRAY_CONCAT(
             prev_rule_join_sql.sql_lines,
-            ARRAY['JOIN "' || output_table_name.output_table_name || '" AS "' || next_fact_alias.alias || '"'],
-            ARRAY['ON ' || ARRAY_AGG(var_join.sql)[1]],
+            ARRAY['  JOIN "' || output_table_name.output_table_name || '" AS "' || next_fact_alias.alias || '"'],
+            ARRAY['    ON ' || ARRAY_AGG(var_join.sql)[1]],
             TRANSFORM(
                 TEXT_ARRAY_DROP_LEFT(
                     ARRAY_AGG(var_join.sql),
                     CAST(1 AS INTEGER UNSIGNED)),
-                x -> 'AND ' || x)
+                x -> '    AND ' || x)
         ) AS sql_lines
     FROM rule_join_sql AS prev_rule_join_sql
     JOIN adjacent_facts
@@ -1118,7 +1118,7 @@ grouped_by_sql(pipeline_id:, rule_id:, sql_lines:) <-
     unaggregated_param_expr(pipeline_id:, rule_id:, sql: param_sql)
     has_aggregation(pipeline_id:, rule_id:)
     exprs_sql := join(array<param_sql>, ", ")
-    sql_lines := [`GROUP BY {{exprs_sql}}`]
+    sql_lines := [`  GROUP BY {{exprs_sql}}`]
 grouped_by_sql(pipeline_id:, rule_id:, sql_lines:) <-
     unaggregated_param_expr(pipeline_id:, rule_id:)
     not has_aggregation(pipeline_id:, rule_id:)
@@ -1132,7 +1132,7 @@ CREATE MATERIALIZED VIEW grouped_by_sql AS
     SELECT DISTINCT
         unaggregated_param_expr.pipeline_id,
         unaggregated_param_expr.rule_id,
-        ARRAY[('GROUP BY ' || ARRAY_TO_STRING(ARRAY_AGG(unaggregated_param_expr.sql), ', '))] AS sql_lines
+        ARRAY[('  GROUP BY ' || ARRAY_TO_STRING(ARRAY_AGG(unaggregated_param_expr.sql), ', '))] AS sql_lines
     FROM unaggregated_param_expr
     JOIN has_aggregation
         ON unaggregated_param_expr.pipeline_id = has_aggregation.pipeline_id
@@ -1225,7 +1225,7 @@ select_sql(pipeline_id:, rule_id:, sql_lines:) <-
     rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
     columns_sql := join(array<`{{expr_sql}} AS "{{key}}"`, by: key>, ", ")
-    sql_lines := [`SELECT DISTINCT {{columns_sql}}`]
+    sql_lines := [`  SELECT DISTINCT {{columns_sql}}`]
 select_sql(pipeline_id:, rule_id:, sql_lines:) <-
     rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
@@ -1235,7 +1235,7 @@ select_sql(pipeline_id:, rule_id:, sql_lines:) <-
     join_sql(pipeline_id:, rule_id:, sql_lines: join_sql_lines)
     columns_sql := join(array<`{{expr_sql}} AS "{{key}}"`, by: key>, ", ")
     sql_lines := [
-        `SELECT DISTINCT {{columns_sql}}`,
+        `  SELECT DISTINCT {{columns_sql}}`,
         *join_sql_lines,
         *where_sql_lines,
         *group_by_sql_lines,
@@ -1246,7 +1246,7 @@ CREATE MATERIALIZED VIEW select_sql AS
     SELECT DISTINCT
         rule_param.pipeline_id,
         rule_param.rule_id,
-        ARRAY['SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_expr.sql || ' AS "' || rule_param.key || '"' ORDER BY rule_param.key), ', ')] AS sql_lines
+        ARRAY['  SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_expr.sql || ' AS "' || rule_param.key || '"' ORDER BY rule_param.key), ', ')] AS sql_lines
     FROM constant_rule
     JOIN rule_param
         ON constant_rule.pipeline_id = rule_param.pipeline_id
@@ -1270,7 +1270,7 @@ CREATE MATERIALIZED VIEW select_sql AS
         rule_param.pipeline_id,
         rule_param.rule_id,
         ARRAY_CONCAT(
-            ARRAY['SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_expr.sql || ' AS "' || rule_param.key || '"' ORDER BY rule_param.key), ', ')],
+            ARRAY['  SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_expr.sql || ' AS "' || rule_param.key || '"' ORDER BY rule_param.key), ', ')],
             join_sql.sql_lines,
             full_where_cond_sql.sql_lines,
             grouped_by_sql.sql_lines,
@@ -1310,7 +1310,7 @@ table_view_sql(pipeline_id:, table_name:, rule_id:, sql_lines:) <-
     table_next_rule(pipeline_id:, table_name:, prev_rule_id:, next_rule_id:)
     select_sql(pipeline_id:, rule_id: next_rule_id, sql_lines: next_sql_lines)
     # table_next_rule(pipeline_id:, table_name:, prev_rule_id: next_rule_id)
-    sql_lines := [*prev_sql_lines, "UNION", *next_sql_lines]
+    sql_lines := [*prev_sql_lines, "  UNION", *next_sql_lines]
 */
 DECLARE RECURSIVE VIEW table_view_sql (pipeline_id TEXT, table_name TEXT, rule_id TEXT, sql_lines TEXT ARRAY);
 CREATE MATERIALIZED VIEW table_view_sql AS
@@ -1338,7 +1338,7 @@ CREATE MATERIALIZED VIEW table_view_sql AS
         tn.next_rule_id,
         ARRAY_CONCAT(
             table_view_sql.sql_lines,
-            ARRAY['UNION'],
+            ARRAY['  UNION'],
             select_sql.sql_lines
         ) AS sql_lines
     FROM table_view_sql
