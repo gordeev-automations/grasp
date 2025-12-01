@@ -15,14 +15,17 @@ fact: IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
 negated_fact: "not" _WS_INLINE+ IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
 match_stmt: expr _WS_INLINE+ ":=" _WS_INLINE+ expr
 
-expr: IDENTIFIER | NUMBER | ESCAPED_STRING | aggregated_expr | binop_expr
+expr: IDENTIFIER | NUMBER | ESCAPED_STRING | aggregated_expr | binop_expr | dict_expr | array_expr
 binop_expr: expr _WS_INLINE+ SPACED_BINOP _WS_INLINE+ expr
     | expr _WS_INLINE+ CMP_OP _WS_INLINE+ expr
 aggregated_expr: IDENTIFIER "<" _WS_INLINE* (fn_args _WS_INLINE*)? ">"
+dict_expr: "{" _WS* kv_args? _WS* ("," _WS*)? "}"
+array_expr: "[" _WS* (array_element (_WS* "," _WS* array_element)* (_WS* "," _WS*)?)? "]"
+array_element: "*" IDENTIFIER -> asterisk_var | expr
 
 CMP_OP: "=" | ">" | "<" | ">=" | "<=" | "!="
 SPACED_BINOP: "is"
-IDENTIFIER: LETTER ("_"|LETTER|DIGIT)* (":" LETTER ("_"|LETTER|DIGIT)*)?
+IDENTIFIER: (LETTER|"_") ("_"|LETTER|DIGIT)* (":" LETTER ("_"|LETTER|DIGIT)*)?
 
 _LINE_COMMENT: /#.*/ _NEWLINE
 _WS: WS
