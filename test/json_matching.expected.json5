@@ -1,0 +1,17 @@
+{
+    inline_keyboard_callback_data: [
+        { first: "to_baza", second: "some_data1", third: "reviews" },
+    ],
+    last_button_callback_data: [
+        { "callback_data": "reviews" },
+    ],
+    buttons_after_three: [
+        { buttons: [] }
+    ],
+    json_fields: [
+        {
+            important_ids: [{update_id: 261222353}, {message_id: 141856}],
+            chat_info: {id: 5675920174, type: "private", first_name: "FirstName1"},
+        }
+    ],
+}
