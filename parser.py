@@ -155,6 +155,118 @@ def records_from_aggregated_expr(aggr_expr, rule_id, expr_id, fn_name, fn_args, 
 
 
 
+def records_from_dict_arg(arg, rule_id, dict_id, idgen):
+    match arg:
+        case Tree(data=Token(type='RULE', value='kv_arg'), children=[
+            Token(type='IDENTIFIER', value=key),
+        ]):
+            expr_id = f'ex{next(idgen)}'
+            return {
+                'var_expr': [{
+                    'rule_id': rule_id, 'expr_id': expr_id, 'var_name': key,
+
+                    'start_line': arg.children[0].line,
+                    'start_column': arg.children[0].column,
+                    'end_line': arg.children[0].end_line,
+                    'end_column': arg.children[0].end_column,
+                }],
+                'dict_entry': [{
+                    'rule_id': rule_id,
+                    'dict_id': dict_id,
+                    'key': key,
+                    'expr_id': expr_id,
+                    'expr_type': 'var_expr',
+
+                    'start_line': arg.meta.container_line,
+                    'start_column': arg.meta.container_column,
+                    'end_line': arg.meta.container_end_line,
+                    'end_column': arg.meta.container_end_column,
+                }]
+            }
+        case Tree(data=Token(type='RULE', value='kv_arg'), children=[
+            Token(type='IDENTIFIER', value=key),
+            Tree(data=Token(type='RULE', value='expr'), children=[expr]),
+        ]):
+            expr_id = f'ex{next(idgen)}'
+            expr_type, expr_records = records_from_expr(expr, rule_id, expr_id, idgen)
+            return merge_records(
+                expr_records,
+                {
+                    'dict_entry': [{
+                        'rule_id': rule_id,
+                        'dict_id': dict_id,
+                        'key': key,
+                        'expr_id': expr_id,
+                        'expr_type': expr_type,
+
+                        'start_line': arg.meta.container_line,
+                        'start_column': arg.meta.container_column,
+                        'end_line': arg.meta.container_end_line,
+                        'end_column': arg.meta.container_end_column,
+                    }]
+                }
+            )
+        case _:
+            raise Exception(f"Invalid arg expr {arg}")
+
+
+
+def records_from_array_element(element, index, rule_id, array_id, idgen):
+    match element:
+        case Tree(data=Token(type='RULE', value='array_element'), children=[
+            Tree(data=Token(type='RULE', value='expr'), children=[expr]),
+        ]):
+            expr_id = f'ex{next(idgen)}'
+            expr_type, expr_records = records_from_expr(expr, rule_id, expr_id, idgen)
+            return merge_records(
+                expr_records,
+                {
+                    'array_entry': [{
+                        'rule_id': rule_id,
+                        'array_id': array_id,
+                        'index': index,
+                        'expr_id': expr_id,
+                        'expr_type': expr_type,
+
+                        'start_line': element.meta.container_line,
+                        'start_column': element.meta.container_column,
+                        'end_line': element.meta.container_end_line,
+                        'end_column': element.meta.container_end_column,
+                    }]
+                }
+            )
+        case Tree(data='asterisk_var', children=[
+            Token(type='IDENTIFIER', value=var_name),
+        ]):
+            expr_id = f'ex{next(idgen)}'
+            return {
+                'var_expr': [{
+                    'rule_id': rule_id, 'expr_id': expr_id, 'var_name': var_name,
+                    'special_prefix': '*',
+
+                    'start_line': element.children[0].line,
+                    'start_column': element.children[0].column,
+                    'end_line': element.children[0].end_line,
+                    'end_column': element.children[0].end_column,
+                }],
+                'array_entry': [{
+                    'rule_id': rule_id,
+                    'array_id': array_id,
+                    'index': index,
+                    'expr_id': expr_id,
+                    'expr_type': 'var_expr',
+
+                    'start_line': element.meta.container_line,
+                    'start_column': element.meta.container_column,
+                    'end_line': element.meta.container_end_line,
+                    'end_column': element.meta.container_end_column,
+                }]
+            }
+        case _:
+            raise Exception(f"Invalid array element {element}")
+
+
+
 def records_from_expr(expr, rule_id, expr_id, idgen):
     match expr:
         case Token(type='NUMBER', value=value):
@@ -248,6 +360,36 @@ def records_from_expr(expr, rule_id, expr_id, idgen):
             Token(type='IDENTIFIER', value=fn_name),
         ]):
             return 'aggr_expr', records_from_aggregated_expr(expr, rule_id, expr_id, fn_name, None, idgen)
+        case Tree(data=Token(type='RULE', value='dict_expr'), children=[
+            Tree(data=Token(type='RULE', value='kv_args'), children=kv_args),
+        ]):
+            dict_id = f'dt{next(idgen)}'
+            args_records = [records_from_dict_arg(da, rule_id, dict_id, idgen) for da in kv_args]
+            return 'dict_expr', functools.reduce(merge_records, [
+                *args_records,
+                { 'dict_expr': [{
+                    'rule_id': rule_id, 'dict_id': dict_id, 'expr_id': expr_id,
+
+                    'start_line': expr.meta.container_line,
+                    'start_column': expr.meta.container_column,
+                    'end_line': expr.meta.container_end_line,
+                    'end_column': expr.meta.container_end_column,
+                }] },
+            ])
+        case Tree(data=Token(type='RULE', value='array_expr'), children=array_elements):
+            array_id = f'ar{next(idgen)}'
+            elements_records = [records_from_array_element(e, i, rule_id, array_id, idgen) for (i, e) in enumerate(array_elements)]
+            return 'array_expr', functools.reduce(merge_records, [
+                *elements_records,
+                { 'array_expr': [{
+                    'rule_id': rule_id, 'array_id': array_id, 'expr_id': expr_id,
+
+                    'start_line': expr.meta.container_line,
+                    'start_column': expr.meta.container_column,
+                    'end_line': expr.meta.container_end_line,
+                    'end_column': expr.meta.container_end_column,
+                }] },
+            ])
         case _:
             raise Exception(f"Invalid expr {expr}")
 
@@ -278,6 +420,25 @@ def records_from_fact_arg(fact_arg, rule_id, fact_id, idgen):
                     'end_column': fact_arg.children[0].end_column,
                 }],
             }
+        case Tree(data=Token(type='RULE', value='kv_arg'), children=[
+            Token(type='IDENTIFIER', value=key),
+            Tree(data=Token(type='RULE', value='expr'), children=[expr]),
+        ]):
+            expr_type, expr_records = records_from_expr(expr, rule_id, expr_id, idgen)
+            return merge_records(
+                expr_records,
+                {
+                    'fact_arg': [{
+                        'rule_id': rule_id, 'fact_id': fact_id, 'key': key,
+                        'expr_id': expr_id, 'expr_type': expr_type,
+
+                        'start_line': fact_arg.meta.container_line,
+                        'start_column': fact_arg.meta.container_column,
+                        'end_line': fact_arg.meta.container_end_line,
+                        'end_column': fact_arg.meta.container_end_column,
+                    }]
+                }
+            )
         case _:
             raise Exception(f"Invalid fact arg {fact_arg}")
 

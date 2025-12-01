@@ -1,9 +1,3 @@
-table(table_name: "tg_update", columns: {
-	tg_update: {type: "VARIANT"},
-	tg_bot_username: {type: "TEXT"},
-	collected_at: {type: "TIMESTAMP"},
-})
-
 inline_keyboard_callback_data(first:, second:, third:) <-
 	tg_update(
 		tg_bot_username: "some_nonexisting_bot",

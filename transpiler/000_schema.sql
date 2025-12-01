@@ -151,6 +151,9 @@ CREATE TABLE var_expr (
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
     var_name TEXT NOT NULL,
+    -- for example "*", "**" or NULL
+    -- used in pattern matching
+    special_prefix TEXT,
 
     start_line INTEGER NOT NULL,
     start_column INTEGER NOT NULL,
