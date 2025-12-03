@@ -644,7 +644,29 @@ def records_from_tree(tree, original_source_path, idgen):
 
 
 
-def parse(text, original_path):
+def records_from_schema(schema):
+    schema_table = []
+    schema_table_column = []
+    for (table_name, table_def) in schema.get('tables', {}).items():
+        for (column_name, column_def) in table_def.get('columns', {}).items():
+            schema_table_column.append({
+                'table_name': table_name,
+                'column_name': column_name,
+                'column_type': column_def.get('type'),
+                'nullable': column_def.get('nullable', False),
+            })
+        schema_table.append({
+            'table_name': table_name,
+            'materialized': table_def.get('materialized', False),
+        })
+    return {
+        'schema_table': schema_table,
+        'schema_table_column': schema_table_column,
+    }
+
+
+
+def parse(text, original_path, schema=None):
     scripts_dir = os.path.abspath(os.path.dirname(__file__))
     grammar_text = open(f'{scripts_dir}/grammar.lark', 'r').read()
     # propagate token positions: line, column, end_line, end_col.
@@ -659,4 +681,6 @@ def parse(text, original_path):
     # print(f'\n\ntree:\n{tree}\n\n')
     # print(f'\n\ntree:\n{tree.pretty()}\n\n')
     idgen = natural_num_generator()
-    return records_from_tree(tree, original_path, idgen)
+    return merge_records(
+        records_from_tree(tree, original_path, idgen),
+        records_from_schema(schema))

@@ -471,7 +471,7 @@ CREATE MATERIALIZED VIEW match_right_expr_sql AS
 /*
 var_bound_via_match(pipeline_id:, rule_id:, match_id:, var_name:, sql:, aggregated:) <-
     body_match(pipeline_id:, rule_id:, match_id:, left_expr_id:, left_expr_type:)
-    var_mentioned_in_expr(pipeline_id:, expr_id: left_expr_id, expr_type: left_expr_type, var_name:, access_prefix:)
+    var_referenced_in_expr(pipeline_id:, expr_id: left_expr_id, expr_type: left_expr_type, var_name:, access_prefix:)
     match_right_expr_sql(pipeline_id:, rule_id:, match_id:, sql: right_sql, aggregated:)
     sql := `{{right_sql}}{{access_prefix}}`
 var_bound_via_match(pipeline_id:, rule_id:, match_id: NULL, var_name:, sql:, aggregated:) <-
@@ -483,15 +483,15 @@ CREATE MATERIALIZED VIEW var_bound_via_match AS
         body_match.pipeline_id,
         body_match.rule_id,
         body_match.match_id,
-        var_mentioned_in_expr.var_name,
-        (match_right_expr_sql.sql || var_mentioned_in_expr.access_prefix) AS sql,
+        var_referenced_in_expr.var_name,
+        (match_right_expr_sql.sql || var_referenced_in_expr.access_prefix) AS sql,
         match_right_expr_sql.aggregated
     FROM body_match
-    JOIN var_mentioned_in_expr
-        ON body_match.pipeline_id = var_mentioned_in_expr.pipeline_id
-        AND body_match.rule_id = var_mentioned_in_expr.rule_id
-        AND body_match.left_expr_id = var_mentioned_in_expr.expr_id
-        AND body_match.left_expr_type = var_mentioned_in_expr.expr_type
+    JOIN var_referenced_in_expr
+        ON body_match.pipeline_id = var_referenced_in_expr.pipeline_id
+        AND body_match.rule_id = var_referenced_in_expr.rule_id
+        AND body_match.left_expr_id = var_referenced_in_expr.expr_id
+        AND body_match.left_expr_type = var_referenced_in_expr.expr_type
     JOIN match_right_expr_sql
         ON body_match.pipeline_id = match_right_expr_sql.pipeline_id
         AND body_match.rule_id = match_right_expr_sql.rule_id
@@ -531,12 +531,16 @@ CREATE MATERIALIZED VIEW sql_where_cond AS
         AND body_sql_cond.sql_expr_id = substituted_sql_expr.expr_id;
 
 /*
-substituted_match_left_expr_with_right_expr(pipeline_id:, rule_id:, match_id:, expr_id:, expr_type_id:, sql:) <-
+substituted_match_left_expr_with_right_expr(
+    pipeline_id:, rule_id:, match_id:, expr_id:, expr_type_id:, sql:
+) <-
     body_match(
         pipeline_id:, rule_id:, match_id:, left_expr_id: expr_id, left_expr_type: expr_type,
         right_expr_id:, right_expr_type:)
     substituted_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, expr_type: right_expr_type, sql:)
-substituted_match_left_expr_with_right_expr(pipeline_id:, rule_id:, match_id:, expr_id:, expr_type_id:, sql:) <-
+substituted_match_left_expr_with_right_expr(
+    pipeline_id:, rule_id:, match_id:, expr_id:, expr_type_id:, sql:
+) <-
     substituted_match_left_expr_with_right_expr(
         pipeline_id:, rule_id:, match_id:, expr_id: right_expr_id, expr_type: right_expr_type,
         sql: right_expr_sql)
@@ -544,7 +548,9 @@ substituted_match_left_expr_with_right_expr(pipeline_id:, rule_id:, match_id:, e
     array_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, array_id:)
     array_entry(pipeline_id:, rule_id:, array_id:, index:, expr_id:, expr_type:)
     sql := `{{right_expr_sql}}[{{index}}]`
-substituted_match_left_expr_with_right_expr(pipeline_id:, rule_id:, match_id:, expr_id:, expr_type_id:, sql:) <-
+substituted_match_left_expr_with_right_expr(
+    pipeline_id:, rule_id:, match_id:, expr_id:, expr_type_id:, sql:
+) <-
     substituted_match_left_expr_with_right_expr(
         pipeline_id:, rule_id:, match_id:, expr_id: right_expr_id, expr_type: right_expr_type,
         sql: right_expr_sql)
@@ -611,15 +617,21 @@ CREATE MATERIALIZED VIEW substituted_match_left_expr_with_right_expr AS
 
 /*
 match_where_cond(pipeline_id:, rule_id:, match_id:, sql:) <-
-    body_match(pipeline_id:, rule_id:, match_id:, left_expr_id:, left_expr_type:, right_expr_id:, right_expr_type:)
+    body_match(
+        pipeline_id:, rule_id:, match_id:,
+        left_expr_id:, left_expr_type:, right_expr_id:, right_expr_type:)
     left_expr_type = 'array_expr'
     array_expr_length(pipeline_id:, rule_id:, expr_id:, length:)
-    substituted_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, expr_type: right_expr_type, sql: expr_sql)
+    substituted_expr(
+        pipeline_id:, rule_id:,
+        expr_id: right_expr_id, expr_type: right_expr_type, sql: expr_sql)
     sql := `ARRAY_LENGTH({{expr_sql}}) = {{length}}`
 match_where_cond(pipeline_id:, rule_id:, match_id:, sql:) <-
     substituted_match_left_expr_with_right_expr(
         pipeline_id:, rule_id:, match_id:, expr_id:, expr_type_id:, sql: match_expr_sql)
-    substituted_expr(pipeline_id:, rule_id:, expr_id: left_expr_id, expr_type: left_expr_type, sql: left_expr_sql)
+    substituted_expr(
+        pipeline_id:, rule_id:,
+        expr_id: left_expr_id, expr_type: left_expr_type, sql: left_expr_sql)
     sql := `{{match_expr_sql}} = {{left_expr_sql}}`
 */
 CREATE MATERIALIZED VIEW match_where_cond AS
@@ -718,7 +730,7 @@ CREATE MATERIALIZED VIEW neg_fact_where_cond AS
                 ('    WHERE ' || ARRAY_AGG('"' || fact_alias.alias || '"."' || fact_arg.key || '" = ' || substituted_expr.sql)[1])
             ],
             TRANSFORM(
-                TEXT_ARRAY_DROP_LEFT(
+                GRASP_TEXT_ARRAY_DROP_LEFT(
                     ARRAY_AGG('"' || fact_alias.alias || '"."' || fact_arg.key || '" = ' || substituted_expr.sql),
                     CAST(1 AS INTEGER UNSIGNED)),
                 x -> '        AND ' || x),
@@ -770,7 +782,7 @@ CREATE MATERIALIZED VIEW neg_fact_where_cond_concatenated AS
         ARRAY_CONCAT(
             neg_fact_where_cond_concatenated.sql_lines,
             ARRAY['    AND ' || neg_fact_where_cond.sql_lines[1]],
-            TEXT_ARRAY_DROP_LEFT(neg_fact_where_cond.sql_lines, CAST(1 AS INTEGER UNSIGNED))
+            GRASP_TEXT_ARRAY_DROP_LEFT(neg_fact_where_cond.sql_lines, CAST(1 AS INTEGER UNSIGNED))
         ) AS sql_lines
     FROM neg_fact_where_cond_concatenated
     JOIN adjacent_facts
@@ -832,7 +844,7 @@ CREATE MATERIALIZED VIEW full_where_cond_sql AS
         neg_facts_where_conds_full.rule_id,
         ARRAY_CONCAT(
             ARRAY['  WHERE ' || neg_facts_where_conds_full.sql_lines[1]],
-            TEXT_ARRAY_DROP_LEFT(neg_facts_where_conds_full.sql_lines, CAST(1 AS INTEGER UNSIGNED))
+            GRASP_TEXT_ARRAY_DROP_LEFT(neg_facts_where_conds_full.sql_lines, CAST(1 AS INTEGER UNSIGNED))
         ) AS sql_lines
     FROM neg_facts_where_conds_full
     WHERE NOT EXISTS (
@@ -850,7 +862,7 @@ CREATE MATERIALIZED VIEW full_where_cond_sql AS
         ARRAY_CONCAT(
             ARRAY['  WHERE ' || ARRAY_AGG(where_cond.sql)[1]],
             TRANSFORM(
-                TEXT_ARRAY_DROP_LEFT(ARRAY_AGG(where_cond.sql), CAST(1 AS INTEGER UNSIGNED)),
+                GRASP_TEXT_ARRAY_DROP_LEFT(ARRAY_AGG(where_cond.sql), CAST(1 AS INTEGER UNSIGNED)),
                 (sql_line) -> '    AND ' || sql_line)
         ) AS sql_lines
     FROM where_cond
@@ -869,7 +881,7 @@ CREATE MATERIALIZED VIEW full_where_cond_sql AS
         neg_facts_where_conds_full.rule_id,
         ARRAY_CONCAT(
             ARRAY['  WHERE ' || neg_facts_where_conds_full.sql_lines[1]],
-            TEXT_ARRAY_DROP_LEFT(neg_facts_where_conds_full.sql_lines, CAST(1 AS INTEGER UNSIGNED)),
+            GRASP_TEXT_ARRAY_DROP_LEFT(neg_facts_where_conds_full.sql_lines, CAST(1 AS INTEGER UNSIGNED)),
             TRANSFORM(
                 ARRAY_AGG(where_cond.sql),
                 (sql_line) -> '    AND ' || sql_line)
@@ -951,7 +963,7 @@ CREATE MATERIALIZED VIEW having_cond_sql AS
         ARRAY_CONCAT(
             ARRAY['  HAVING ' || ARRAY_AGG(having_cond.sql)[1]],
             TRANSFORM(
-                TEXT_ARRAY_DROP_LEFT(ARRAY_AGG(having_cond.sql), CAST(1 AS INTEGER UNSIGNED)),
+                GRASP_TEXT_ARRAY_DROP_LEFT(ARRAY_AGG(having_cond.sql), CAST(1 AS INTEGER UNSIGNED)),
                 (sql_line) -> '    AND ' || sql_line)
         ) AS sql_lines
     FROM having_cond
@@ -1058,7 +1070,7 @@ CREATE MATERIALIZED VIEW rule_join_sql AS
             ARRAY['  JOIN "' || output_table_name.output_table_name || '" AS "' || next_fact_alias.alias || '"'],
             ARRAY['    ON ' || ARRAY_AGG(var_join.sql)[1]],
             TRANSFORM(
-                TEXT_ARRAY_DROP_LEFT(
+                GRASP_TEXT_ARRAY_DROP_LEFT(
                     ARRAY_AGG(var_join.sql),
                     CAST(1 AS INTEGER UNSIGNED)),
                 x -> '    AND ' || x)
@@ -1356,12 +1368,104 @@ CREATE MATERIALIZED VIEW table_view_sql AS
     ;
 
 /*
-view_full_sql(pipeline_id:, table_name:, sql_lines:) <-
+schema_table_column_sql(pipeline_id:, table_name:, column_name:, sql:) <-
+    schema_table_column(
+        pipeline_id:, table_name:, column_name:, column_type:, nullable: true)
+    sql := `{{column_name}} {{column_type}}`
+schema_table_column_sql(pipeline_id:, table_name:, column_name:, sql:) <-
+    schema_table_column(
+        pipeline_id:, table_name:, column_name:, column_type:, nullable: false)
+    sql := `{{column_name}} {{column_type}} NOT NULL`
+*/
+CREATE MATERIALIZED VIEW schema_table_column_sql AS
+    SELECT DISTINCT
+        schema_table_column.pipeline_id,
+        schema_table_column.table_name,
+        schema_table_column.column_name,
+        (schema_table_column.column_name || ' ' || schema_table_column.column_type) AS sql
+    FROM schema_table_column
+    WHERE schema_table_column.nullable
+
+    UNION
+
+    SELECT DISTINCT
+        schema_table_column.pipeline_id,
+        schema_table_column.table_name,
+        schema_table_column.column_name,
+        (schema_table_column.column_name || ' ' || schema_table_column.column_type || ' NOT NULL') AS sql
+    FROM schema_table_column
+    WHERE NOT schema_table_column.nullable;
+
+/*
+schema_table_with_sql(pipeline_id:, table_name:, with_sql:) <-
+    schema_table(pipeline_id:, table_name:, materialized: true)
+    with_sql := "WITH ('materialized' = 'true')"
+schema_table_with_sql(pipeline_id:, table_name:, with_sql: "") <-
+    schema_table(pipeline_id:, table_name:, materialized: false)
+*/
+CREATE MATERIALIZED VIEW schema_table_with_sql AS
+    SELECT DISTINCT
+        schema_table.pipeline_id,
+        schema_table.table_name,
+        'WITH ("materialized" = "true")' AS sql
+    FROM schema_table
+    WHERE schema_table."materialized"
+    
+    UNION
+
+    SELECT DISTINCT
+        schema_table.pipeline_id,
+        schema_table.table_name,
+        '' AS sql
+    FROM schema_table
+    WHERE NOT schema_table."materialized";
+
+/*
+schema_table_sql(pipeline_id:, table_name:, sql_lines:) <-
+    schema_table_with_sql(pipeline_id:, table_name:, sql: with_sql)
+    schema_table_column_sql(pipeline_id:, table_name:, column_name:, sql:)
+    output_table_name(pipeline_id:, table_name:, output_table_name:)
+    [*init_lines, last_line] := array<sql>
+    sql_lines := [
+        `CREATE TABLE "{{output_table_name}}" (`,
+        *map(init_lines, x -> `  {{x}},`),
+        `  {{last_line}}`,
+        `) {{with_sql}} ;`,
+    ]
+*/
+CREATE MATERIALIZED VIEW schema_table_sql AS
+    SELECT DISTINCT
+        schema_table_with_sql.pipeline_id,
+        schema_table_with_sql.table_name,
+        ARRAY_CONCAT(
+            ARRAY['CREATE TABLE "' || output_table_name.output_table_name || '" ('],
+            TRANSFORM(
+                GRASP_TEXT_ARRAY_DROP_RIGHT(
+                    ARRAY_AGG(schema_table_column_sql.sql),
+                    CAST(1 AS INTEGER UNSIGNED)),
+                x -> '  ' || x || ','),
+            ARRAY['  ' || ARRAY_AGG(schema_table_column_sql.sql)[ARRAY_LENGTH(ARRAY_AGG(schema_table_column_sql.sql))]],
+            ARRAY[') ' || schema_table_with_sql.sql || ' ;']
+        ) AS sql_lines
+    FROM schema_table_with_sql
+    JOIN schema_table_column_sql
+        ON schema_table_with_sql.pipeline_id = schema_table_column_sql.pipeline_id
+        AND schema_table_with_sql.table_name = schema_table_column_sql.table_name
+    JOIN output_table_name
+        ON schema_table_with_sql.pipeline_id = output_table_name.pipeline_id
+        AND schema_table_with_sql.table_name = output_table_name.table_name
+    GROUP BY schema_table_with_sql.pipeline_id, schema_table_with_sql.table_name, schema_table_with_sql.sql, output_table_name.output_table_name;
+
+/*
+table_sql(pipeline_id:, table_name:, sql_lines:) <-
     table_last_rule(pipeline_id:, table_name:, rule_id:)
     table_view_sql(pipeline_id:, table_name:, rule_id:, sql_lines: sql_lines0)
     sql_lines := [*sql_lines0, ";", ""]
+table_sql(pipeline_id:, table_name:, sql_lines:) <-
+    schema_table(pipeline_id:, table_name:)
+    schema_table_sql(pipeline_id:, table_name:, sql_lines:)
 */
-CREATE MATERIALIZED VIEW view_full_sql AS
+CREATE MATERIALIZED VIEW table_sql AS
     SELECT DISTINCT
         table_view_sql.pipeline_id,
         table_view_sql.table_name,
@@ -1371,28 +1475,39 @@ CREATE MATERIALIZED VIEW view_full_sql AS
         ON table_last_rule.pipeline_id = table_view_sql.pipeline_id
         AND table_last_rule.table_name = table_view_sql.table_name
         AND table_last_rule.rule_id = table_view_sql.rule_id
+    
+    UNION
+
+    SELECT DISTINCT
+        schema_table.pipeline_id,
+        schema_table.table_name,
+        schema_table_sql.sql_lines
+    FROM schema_table
+    JOIN schema_table_sql
+        ON schema_table.pipeline_id = schema_table_sql.pipeline_id
+        AND schema_table.table_name = schema_table_sql.table_name
     ;
 
 /*
-pipeline_views_sql(pipeline_id:, table_name:, sql_lines:) <-
+pipeline_tables_sql(pipeline_id:, table_name:, sql_lines:) <-
     first_table(pipeline_id:, table_name:, order: 0)
-    view_full_sql(pipeline_id:, table_name:, sql_lines:)
-pipeline_views_sql(pipeline_id:, table_name:, sql_lines:) <-
-    pipeline_views_sql(pipeline_id:, table_name: prev_table_name, sql_lines: prev_sql_lines)
+    table_sql(pipeline_id:, table_name:, sql_lines:)
+pipeline_tables_sql(pipeline_id:, table_name:, sql_lines:) <-
+    pipeline_tables_sql(pipeline_id:, table_name: prev_table_name, sql_lines: prev_sql_lines)
     next_table(pipeline_id:, prev_table_name:, next_table_name: table_name)
-    view_full_sql(pipeline_id:, table_name:, sql_lines: next_sql_lines)
+    table_sql(pipeline_id:, table_name:, sql_lines: next_sql_lines)
     sql_lines := [*prev_sql_lines, *next_sql_lines]
 */
-DECLARE RECURSIVE VIEW pipeline_views_sql (pipeline_id TEXT, table_name TEXT, sql_lines TEXT ARRAY);
-CREATE MATERIALIZED VIEW pipeline_views_sql AS
+DECLARE RECURSIVE VIEW pipeline_tables_sql (pipeline_id TEXT, table_name TEXT, sql_lines TEXT ARRAY);
+CREATE MATERIALIZED VIEW pipeline_tables_sql AS
     SELECT DISTINCT
         first_table.pipeline_id,
         first_table.table_name,
-        view_full_sql.sql_lines
+        table_sql.sql_lines
     FROM first_table
-    JOIN view_full_sql
-        ON first_table.pipeline_id = view_full_sql.pipeline_id
-        AND first_table.table_name = view_full_sql.table_name
+    JOIN table_sql
+        ON first_table.pipeline_id = table_sql.pipeline_id
+        AND first_table.table_name = table_sql.table_name
     WHERE first_table."order" = 0
 
     UNION
@@ -1401,30 +1516,30 @@ CREATE MATERIALIZED VIEW pipeline_views_sql AS
         next_table.pipeline_id,
         next_table.next_table_name,
         ARRAY_CONCAT(
-            pipeline_views_sql.sql_lines,
-            view_full_sql.sql_lines
+            pipeline_tables_sql.sql_lines,
+            table_sql.sql_lines
         ) AS sql_lines
-    FROM pipeline_views_sql
+    FROM pipeline_tables_sql
     JOIN next_table
-        ON next_table.pipeline_id = pipeline_views_sql.pipeline_id
-        AND next_table.prev_table_name = pipeline_views_sql.table_name
-    JOIN view_full_sql
-        ON next_table.pipeline_id = view_full_sql.pipeline_id
-        AND next_table.next_table_name = view_full_sql.table_name;
+        ON next_table.pipeline_id = pipeline_tables_sql.pipeline_id
+        AND next_table.prev_table_name = pipeline_tables_sql.table_name
+    JOIN table_sql
+        ON next_table.pipeline_id = table_sql.pipeline_id
+        AND next_table.next_table_name = table_sql.table_name;
 
 /*
 full_pipeline_sql(pipeline_id:, sql_lines:) <-
-    pipeline_views_sql(pipeline_id:, table_name:, sql_lines:)
+    pipeline_tables_sql(pipeline_id:, table_name:, sql_lines:)
     not next_table(pipeline_id:, prev_table_name: table_name)
 */
 CREATE MATERIALIZED VIEW full_pipeline_sql AS
     SELECT DISTINCT
-        pipeline_views_sql.pipeline_id,
-        pipeline_views_sql.sql_lines
-    FROM pipeline_views_sql
+        pipeline_tables_sql.pipeline_id,
+        pipeline_tables_sql.sql_lines
+    FROM pipeline_tables_sql
     WHERE NOT EXISTS (
         SELECT 1
         FROM next_table
-        WHERE next_table.pipeline_id = pipeline_views_sql.pipeline_id
-        AND next_table.prev_table_name = pipeline_views_sql.table_name
+        WHERE next_table.pipeline_id = pipeline_tables_sql.pipeline_id
+        AND next_table.prev_table_name = pipeline_tables_sql.table_name
     );

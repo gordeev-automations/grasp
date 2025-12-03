@@ -165,8 +165,17 @@ def testcase_key(path):
     assert filename[-11:] == '.test.grasp'
     return filename[:-11]
 
+def testcase_schema_path(testcase_path):
+    dirpath = os.path.dirname(testcase_path)
+    return f'{dirpath}/{testcase_key(testcase_path)}.schema.json5'
+
 def testcase_dest_path(testcase_path, cache_dir):
-    return f'{cache_dir}/{testcase_key(testcase_path)}.{file_hash(testcase_path)}.sql'
+    testcase_hash = file_hash(testcase_path)
+    schema_path = testcase_schema_path(testcase_path)
+    if os.path.exists(schema_path):
+        schema_hash = file_hash(schema_path)
+        return f'{cache_dir}/{testcase_key(testcase_path)}.{testcase_hash}-{schema_hash}.sql'
+    return f'{cache_dir}/{testcase_key(testcase_path)}.{testcase_hash}.sql'
 
 def testcase_expected_records_path(testcase_path):
     dirpath = os.path.dirname(testcase_path)

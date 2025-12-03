@@ -7,7 +7,7 @@ import aiohttp
 import json5
 
 import grasp.parser as parser
-from grasp.scripts.util import testcase_key, insert_records, file_hash, need_to_transpile_testcase, adhoc_query, testcase_dest_path, fetch_ingest_status
+from grasp.scripts.util import testcase_key, insert_records, file_hash, need_to_transpile_testcase, adhoc_query, testcase_dest_path, testcase_schema_path, fetch_ingest_status
 
 
 
@@ -18,8 +18,14 @@ async def fetch_output_sql_lines(session, pipeline_name, pipeline_id):
     return result['sql_lines']
 
 async def enqueue_transpilation(testcase_path, pipeline_name, session):
-    records0 = parser.parse(open(testcase_path, 'r').read(), testcase_path)
+    schema_path = testcase_schema_path(testcase_path)
+    schema = None
+    if os.path.exists(schema_path):
+        schema = json5.loads(open(schema_path, 'r').read())
+    records0 = parser.parse(open(testcase_path, 'r').read(), testcase_path, schema)
     pipeline_id = f'{testcase_key(testcase_path)}:{file_hash(testcase_path)}'
+    if schema:
+        pipeline_id = f'{testcase_key(testcase_path)}:{file_hash(testcase_path)}-{file_hash(schema_path)}'
     records = {
         'table_name_prefix': [{
             # all tables in every testcase are prefixed with the testcase name.

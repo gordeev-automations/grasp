@@ -1,32 +1,32 @@
 CREATE TABLE schema_table (
     pipeline_id TEXT NOT NULL,
     table_name TEXT NOT NULL,
-    "materialized" BOOLEAN NOT NULL,
-    has_computed_id BOOLEAN NOT NULL,
-    has_tenant BOOLEAN NOT NULL,
-    read_only BOOLEAN NOT NULL
+    "materialized" BOOLEAN NOT NULL
+    -- has_computed_id BOOLEAN NOT NULL,
+    -- has_tenant BOOLEAN NOT NULL,
+    -- read_only BOOLEAN NOT NULL
 ) WITH ('materialized' = 'true');
 
 CREATE TABLE schema_table_column (
     pipeline_id TEXT NOT NULL,
     table_name TEXT NOT NULL,
     column_name TEXT NOT NULL,
-    data_type TEXT NOT NULL,
+    column_type TEXT NOT NULL,
     nullable BOOLEAN NOT NULL
 ) WITH ('materialized' = 'true');
 
-CREATE TABLE schema_table_archive_from_file (
-    pipeline_id TEXT NOT NULL,
-    table_name TEXT NOT NULL,
-    filename TEXT NOT NULL
-) WITH ('materialized' = 'true');
+-- CREATE TABLE schema_table_archive_from_file (
+--     pipeline_id TEXT NOT NULL,
+--     table_name TEXT NOT NULL,
+--     filename TEXT NOT NULL
+-- ) WITH ('materialized' = 'true');
 
-CREATE TABLE schema_table_archive_pg (
-    pipeline_id TEXT NOT NULL,
-    table_name TEXT NOT NULL,
-    pg_url TEXT NOT NULL,
-    pg_query TEXT NOT NULL
-) WITH ('materialized' = 'true');
+-- CREATE TABLE schema_table_archive_pg (
+--     pipeline_id TEXT NOT NULL,
+--     table_name TEXT NOT NULL,
+--     pg_url TEXT NOT NULL,
+--     pg_query TEXT NOT NULL
+-- ) WITH ('materialized' = 'true');
 
 /*
 # Additional transpilation options.

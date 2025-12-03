@@ -11,6 +11,7 @@ aggregated(
 ) <-
 	person(age:, name:)
 	max_age := max<age>
+	# at_least_one_without_age := some<is_NULL(age)>
 	at_least_one_without_age := some<age is NULL>
 	at_least_one_older_than_18 := some<older_than_18>
 	older_than_18 := age >= 18

@@ -510,52 +510,433 @@ CREATE MATERIALIZED VIEW var_mentioned_in_sql_expr AS
     WHERE t.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$';
 
 /*
-var_mentioned_in_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "") <-
+expr(pipeline_id:, rule_id:, expr_id:, expr_type: "aggr_expr") <-
+    aggr_expr(pipeline_id:, rule_id:, expr_id:)
+expr(pipeline_id:, rule_id:, expr_id:, expr_type: "fncall_expr") <-
+    fncall_expr(pipeline_id:, rule_id:, expr_id:)
+expr(pipeline_id:, rule_id:, expr_id:, expr_type: "int_expr") <-
+    int_expr(pipeline_id:, rule_id:, expr_id:)
+expr(pipeline_id:, rule_id:, expr_id:, expr_type: "str_expr") <-
+    str_expr(pipeline_id:, rule_id:, expr_id:)
+expr(pipeline_id:, rule_id:, expr_id:, expr_type: "var_expr") <-
+    var_expr(pipeline_id:, rule_id:, expr_id:)
+expr(pipeline_id:, rule_id:, expr_id:, expr_type: "array_expr") <-
+    array_expr(pipeline_id:, rule_id:, expr_id:)
+expr(pipeline_id:, rule_id:, expr_id:, expr_type: "dict_expr") <-
+    dict_expr(pipeline_id:, rule_id:, expr_id:)
+expr(pipeline_id:, rule_id:, expr_id:, expr_type: "null_expr") <-
+    null_expr(pipeline_id:, rule_id:, expr_id:)
+expr(pipeline_id:, rule_id:, expr_id:, expr_type: "binop_expr") <-
+    binop_expr(pipeline_id:, rule_id:, expr_id:)
+expr(pipeline_id:, rule_id:, expr_id:, expr_type: "sql_expr") <-
+    sql_expr(pipeline_id:, rule_id:, expr_id:)
+*/
+CREATE MATERIALIZED VIEW expr AS
+    SELECT DISTINCT
+        aggr_expr.pipeline_id,
+        aggr_expr.rule_id,
+        aggr_expr.expr_id,
+        'aggr_expr' AS expr_type
+    FROM aggr_expr
+    UNION
+    SELECT DISTINCT
+        fncall_expr.pipeline_id,
+        fncall_expr.rule_id,
+        fncall_expr.expr_id,
+        'fncall_expr' AS expr_type
+    FROM fncall_expr
+    UNION
+    SELECT DISTINCT
+        int_expr.pipeline_id,
+        int_expr.rule_id,
+        int_expr.expr_id,
+        'int_expr' AS expr_type
+    FROM int_expr
+    UNION
+    SELECT DISTINCT
+        str_expr.pipeline_id,
+        str_expr.rule_id,
+        str_expr.expr_id,
+        'str_expr' AS expr_type
+    FROM str_expr
+    UNION
+    SELECT DISTINCT
+        var_expr.pipeline_id,
+        var_expr.rule_id,
+        var_expr.expr_id,
+        'var_expr' AS expr_type
+    FROM var_expr
+    UNION
+    SELECT DISTINCT
+        array_expr.pipeline_id,
+        array_expr.rule_id,
+        array_expr.expr_id,
+        'array_expr' AS expr_type
+    FROM array_expr
+    UNION
+    SELECT DISTINCT
+        dict_expr.pipeline_id,
+        dict_expr.rule_id,
+        dict_expr.expr_id,
+        'dict_expr' AS expr_type
+    FROM dict_expr
+    UNION
+    SELECT DISTINCT
+        null_expr.pipeline_id,
+        null_expr.rule_id,
+        null_expr.expr_id,
+        'null_expr' AS expr_type
+    FROM null_expr
+    UNION
+    SELECT DISTINCT
+        binop_expr.pipeline_id,
+        binop_expr.rule_id,
+        binop_expr.expr_id,
+        'binop_expr' AS expr_type
+    FROM binop_expr
+    UNION
+    SELECT DISTINCT
+        sql_expr.pipeline_id,
+        sql_expr.rule_id,
+        sql_expr.expr_id,
+        'sql_expr' AS expr_type
+    FROM sql_expr;
+
+/*
+pattern_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    fact_arg(pipeline_id:, rule_id:, expr_id:, expr_type:)
+pattern_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    body_match(
+        pipeline_id:, rule_id:,
+        left_expr_id: expr_id, left_expr_type: expr_type)
+pattern_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    pattern_expr(pipeline_id:, rule_id:, expr_id: array_expr_id, expr_type: "array_expr")
+    array_expr(pipeline_id:, rule_id:, expr_id: array_expr_id, array_id:)
+    array_entry(
+        pipeline_id:, rule_id:, array_id:,
+        expr_id:, expr_type:)
+pattern_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    pattern_expr(pipeline_id:, rule_id:, expr_id: dict_expr_id, expr_type: "dict_expr")
+    dict_expr(pipeline_id:, rule_id:, expr_id: dict_expr_id, dict_id:)
+    dict_entry(pipeline_id:, rule_id:, dict_id:, expr_id:, expr_type:)
+*/
+DECLARE RECURSIVE VIEW pattern_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, expr_type TEXT);
+CREATE MATERIALIZED VIEW pattern_expr AS
+    SELECT DISTINCT
+        fact_arg.pipeline_id,
+        fact_arg.rule_id,
+        fact_arg.expr_id,
+        fact_arg.expr_type
+    FROM fact_arg
+    UNION
+    SELECT DISTINCT
+        body_match.pipeline_id,
+        body_match.rule_id,
+        body_match.left_expr_id AS expr_id,
+        body_match.left_expr_type AS expr_type
+    FROM body_match
+    UNION
+    SELECT DISTINCT
+        array_entry.pipeline_id,
+        array_entry.rule_id,
+        array_entry.expr_id,
+        array_entry.expr_type
+    FROM pattern_expr
+    JOIN array_expr
+        ON pattern_expr.pipeline_id = array_expr.pipeline_id
+        AND pattern_expr.rule_id = array_expr.rule_id
+        AND pattern_expr.expr_id = array_expr.expr_id
+    JOIN array_entry
+        ON array_expr.pipeline_id = array_entry.pipeline_id
+        AND array_expr.rule_id = array_entry.rule_id
+        AND array_expr.array_id = array_entry.array_id
+    WHERE pattern_expr.expr_type = 'array_expr'
+    UNION
+    SELECT DISTINCT
+        dict_entry.pipeline_id,
+        dict_entry.rule_id,
+        dict_entry.expr_id,
+        dict_entry.expr_type
+    FROM pattern_expr
+    JOIN dict_expr
+        ON pattern_expr.pipeline_id = dict_expr.pipeline_id
+        AND pattern_expr.rule_id = dict_expr.rule_id
+        AND pattern_expr.expr_id = dict_expr.expr_id
+    JOIN dict_entry
+        ON dict_expr.pipeline_id = dict_entry.pipeline_id
+        AND dict_expr.rule_id = dict_entry.rule_id
+        AND dict_expr.dict_id = dict_entry.dict_id
+    WHERE pattern_expr.expr_type = 'dict_expr';
+
+/*
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    rule_param(pipeline_id:, rule_id:, expr_id:, expr_type:)
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    body_match(
+        pipeline_id:, rule_id:,
+        right_expr_id: expr_id, right_expr_type: expr_type)
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    body_expr(pipeline_id:, rule_id:, expr_id:, expr_type:)
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    value_expr(pipeline_id:, rule_id:, expr_id: array_expr_id, expr_type: "array_expr")
+    array_expr(pipeline_id:, rule_id:, expr_id: array_expr_id, array_id:)
+    array_entry(
+        pipeline_id:, rule_id:, array_id:,
+        expr_id:, expr_type:)
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    value_expr(pipeline_id:, rule_id:, expr_id: dict_expr_id, expr_type: "dict_expr")
+    dict_expr(pipeline_id:, rule_id:, expr_id: dict_expr_id, dict_id:)
+    dict_entry(pipeline_id:, rule_id:, dict_id:, expr_id:, expr_type:)
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    value_expr(pipeline_id:, rule_id:, expr_id: fncall_expr_id, expr_type: "fncall_expr")
+    fncall_expr(pipeline_id:, rule_id:, expr_id: fncall_expr_id, fncall_id:)
+    fn_val_arg(pipeline_id:, rule_id:, fncall_id:, expr_id:, expr_type:)
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    value_expr(pipeline_id:, rule_id:, expr_id: sql_expr_id, expr_type: "fncall_expr")
+    fncall_expr(pipeline_id:, rule_id:, expr_id: fncall_expr_id, fncall_id:)
+    fn_kv_arg(pipeline_id:, rule_id:, fncall_id:, expr_id:, expr_type:)
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    value_expr(pipeline_id:, rule_id:, expr_id: sql_expr_id, expr_type: "aggr_expr")
+    aggr_expr(pipeline_id:, rule_id:, expr_id: sql_expr_id, fncall_id:)
+    fn_val_arg(pipeline_id:, rule_id:, fncall_id:, expr_id:, expr_type:)
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    value_expr(pipeline_id:, rule_id:, expr_id: sql_expr_id, expr_type: "aggr_expr")
+    aggr_expr(pipeline_id:, rule_id:, expr_id: sql_expr_id, fncall_id:)
+    fn_kv_arg(pipeline_id:, rule_id:, fncall_id:, expr_id:, expr_type:)
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    value_expr(pipeline_id:, rule_id:, expr_id: sql_expr_id, expr_type: "binop_expr")
+    binop_expr(pipeline_id:, rule_id:, left_expr_id: expr_id, left_expr_type: expr_type)
+value_expr(pipeline_id:, rule_id:, expr_id:, expr_type:) <-
+    value_expr(pipeline_id:, rule_id:, expr_id: sql_expr_id, expr_type: "binop_expr")
+    binop_expr(pipeline_id:, rule_id:, right_expr_id: expr_id, right_expr_type: expr_type)
+*/
+DECLARE RECURSIVE VIEW value_expr(pipeline_id TEXT, rule_id TEXT, expr_id TEXT, expr_type TEXT);
+CREATE MATERIALIZED VIEW value_expr AS
+    SELECT DISTINCT
+        rule_param.pipeline_id,
+        rule_param.rule_id,
+        rule_param.expr_id,
+        rule_param.expr_type
+    FROM rule_param
+
+    UNION
+
+    SELECT DISTINCT
+        body_match.pipeline_id,
+        body_match.rule_id,
+        body_match.right_expr_id AS expr_id,
+        body_match.right_expr_type AS expr_type
+    FROM body_match
+    UNION
+    SELECT DISTINCT
+        body_expr.pipeline_id,
+        body_expr.rule_id,
+        body_expr.expr_id,
+        body_expr.expr_type
+    FROM body_expr
+
+    UNION
+
+    SELECT DISTINCT
+        array_expr.pipeline_id,
+        array_expr.rule_id,
+        array_entry.expr_id,
+        array_entry.expr_type
+    FROM value_expr
+    JOIN array_expr
+        ON value_expr.pipeline_id = array_expr.pipeline_id
+        AND value_expr.rule_id = array_expr.rule_id
+        AND value_expr.expr_id = array_expr.expr_id
+    JOIN array_entry
+        ON array_expr.pipeline_id = array_entry.pipeline_id
+        AND array_expr.rule_id = array_entry.rule_id
+        AND array_expr.array_id = array_entry.array_id
+    WHERE value_expr.expr_type = 'array_expr'
+
+    UNION
+
+    SELECT DISTINCT
+        dict_expr.pipeline_id,
+        dict_expr.rule_id,
+        dict_entry.expr_id,
+        dict_entry.expr_type
+    FROM value_expr
+    JOIN dict_expr
+        ON value_expr.pipeline_id = dict_expr.pipeline_id
+        AND value_expr.rule_id = dict_expr.rule_id
+        AND value_expr.expr_id = dict_expr.expr_id
+    JOIN dict_entry
+        ON dict_expr.pipeline_id = dict_entry.pipeline_id
+        AND dict_expr.rule_id = dict_entry.rule_id
+        AND dict_expr.dict_id = dict_entry.dict_id
+    WHERE value_expr.expr_type = 'dict_expr'
+
+    UNION
+
+    SELECT DISTINCT
+        value_expr.pipeline_id,
+        value_expr.rule_id,
+        fn_val_arg.expr_id,
+        fn_val_arg.expr_type
+    FROM value_expr
+    JOIN fncall_expr
+        ON value_expr.pipeline_id = fncall_expr.pipeline_id
+        AND value_expr.rule_id = fncall_expr.rule_id
+        AND value_expr.expr_id = fncall_expr.expr_id
+    JOIN fn_val_arg
+        ON fncall_expr.pipeline_id = fn_val_arg.pipeline_id
+        AND fncall_expr.rule_id = fn_val_arg.rule_id
+        AND fncall_expr.fncall_id = fn_val_arg.fncall_id
+    WHERE value_expr.expr_type = 'fncall_expr'
+
+    UNION
+
+    SELECT DISTINCT
+        value_expr.pipeline_id,
+        value_expr.rule_id,
+        fn_kv_arg.expr_id,
+        fn_kv_arg.expr_type
+    FROM value_expr
+    JOIN fncall_expr
+        ON value_expr.pipeline_id = fncall_expr.pipeline_id
+        AND value_expr.rule_id = fncall_expr.rule_id
+        AND value_expr.expr_id = fncall_expr.expr_id
+    JOIN fn_kv_arg
+        ON fncall_expr.pipeline_id = fn_kv_arg.pipeline_id
+        AND fncall_expr.rule_id = fn_kv_arg.rule_id
+        AND fncall_expr.fncall_id = fn_kv_arg.fncall_id
+    WHERE value_expr.expr_type = 'fncall_expr'
+
+    UNION
+
+    SELECT DISTINCT
+        value_expr.pipeline_id,
+        value_expr.rule_id,
+        fn_val_arg.expr_id,
+        fn_val_arg.expr_type
+    FROM value_expr
+    JOIN aggr_expr
+        ON value_expr.pipeline_id = aggr_expr.pipeline_id
+        AND value_expr.rule_id = aggr_expr.rule_id
+        AND value_expr.expr_id = aggr_expr.expr_id
+    JOIN fn_val_arg
+        ON aggr_expr.pipeline_id = fn_val_arg.pipeline_id
+        AND aggr_expr.rule_id = fn_val_arg.rule_id
+        AND aggr_expr.fncall_id = fn_val_arg.fncall_id
+    WHERE value_expr.expr_type = 'aggr_expr'
+
+    UNION
+
+    SELECT DISTINCT
+        value_expr.pipeline_id,
+        value_expr.rule_id,
+        fn_kv_arg.expr_id,
+        fn_kv_arg.expr_type
+    FROM value_expr
+    JOIN aggr_expr
+        ON value_expr.pipeline_id = aggr_expr.pipeline_id
+        AND value_expr.rule_id = aggr_expr.rule_id
+        AND value_expr.expr_id = aggr_expr.expr_id
+    JOIN fn_kv_arg
+        ON aggr_expr.pipeline_id = fn_kv_arg.pipeline_id
+        AND aggr_expr.rule_id = fn_kv_arg.rule_id
+        AND aggr_expr.fncall_id = fn_kv_arg.fncall_id
+    WHERE value_expr.expr_type = 'aggr_expr'
+
+    UNION
+
+    SELECT DISTINCT
+        value_expr.pipeline_id,
+        value_expr.rule_id,
+        binop_expr.left_expr_id AS expr_id,
+        binop_expr.left_expr_type AS expr_type
+    FROM value_expr
+    JOIN binop_expr
+        ON value_expr.pipeline_id = binop_expr.pipeline_id
+        AND value_expr.rule_id = binop_expr.rule_id
+        AND value_expr.expr_id = binop_expr.expr_id
+
+    UNION
+
+    SELECT DISTINCT
+        value_expr.pipeline_id,
+        value_expr.rule_id,
+        binop_expr.right_expr_id AS expr_id,
+        binop_expr.right_expr_type AS expr_type
+    FROM value_expr
+    JOIN binop_expr
+        ON value_expr.pipeline_id = binop_expr.pipeline_id
+        AND value_expr.rule_id = binop_expr.rule_id
+        AND value_expr.expr_id = binop_expr.expr_id;
+
+/*
+var_referenced_in_expr(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "",
+    array_entry_index: NULL,
+) <-
     var_expr(pipeline_id:, rule_id:, expr_id:, var_name:)
     expr_type := "var_expr"
-var_mentioned_in_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "") <-
+var_referenced_in_expr(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "",
+    array_entry_index: NULL,
+) <-
     aggr_expr(pipeline_id:, rule_id:, expr_id:, fncall_id:)
     fn_val_arg(
         pipeline_id:, rule_id:, fncall_id:, expr_id: arg_expr_id, expr_type: arg_expr_type)
-    var_mentioned_in_expr(
+    var_referenced_in_expr(
         pipeline_id:, rule_id:, expr_id: arg_expr_id, expr_type: arg_expr_type,
         var_name:)
     expr_type := 'aggr_expr'
-var_mentioned_in_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "") <-
+var_referenced_in_expr(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "",
+    array_entry_index: NULL,
+) <-
     aggr_expr(pipeline_id:, rule_id:, expr_id:, fncall_id:)
     fn_kv_arg(
         pipeline_id:, rule_id:, fncall_id:, expr_id: arg_expr_id, expr_type: arg_expr_type)
-    var_mentioned_in_expr(
+    var_referenced_in_expr(
         pipeline_id:, rule_id:, expr_id: arg_expr_id, expr_type: arg_expr_type,
         var_name:)
     expr_type := 'aggr_expr'
-var_mentioned_in_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "") <-
+var_referenced_in_expr(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, var_name:, access_prefix: "",
+    array_entry_index: NULL,
+) <-
     var_mentioned_in_sql_expr(pipeline_id:, rule_id:, expr_id:, var_name:)
     expr_type := 'sql_expr'
-var_mentioned_in_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "array_expr", var_name:, access_prefix:) <-
+var_referenced_in_expr(
+    pipeline_id:, rule_id:, expr_id:, expr_type: "array_expr", var_name:, access_prefix:,
+    array_entry_index: index,
+) <-
     array_expr(pipeline_id:, rule_id:, expr_id:, array_id:)
-    array_entry(pipeline_id:, rule_id:, array_id:, expr_id: entry_expr_id, expr_type: entry_expr_type, index:)
-    var_mentioned_in_expr(
+    array_entry(
+        pipeline_id:, rule_id:, array_id:,
+        expr_id: entry_expr_id, expr_type: entry_expr_type, index:)
+    var_referenced_in_expr(
         pipeline_id:, rule_id:, expr_id: entry_expr_id, expr_type: entry_expr_type,
         var_name:, access_prefix: prev_access_prefix)
     access_prefix := `[{{index}}]{{prev_access_prefix}}`
-var_mentioned_in_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "dict_expr", var_name:, access_prefix:) <-
+var_referenced_in_expr(
+    pipeline_id:, rule_id:, expr_id:, expr_type: "dict_expr", var_name:, access_prefix:,
+    array_entry_index: NULL,
+) <-
     dict_expr(pipeline_id:, rule_id:, expr_id:, dict_id:)
     dict_entry(pipeline_id:, rule_id:, dict_id:, key:, expr_id: entry_expr_id, expr_type: entry_expr_type)
-    var_mentioned_in_expr(
+    var_referenced_in_expr(
         pipeline_id:, rule_id:, expr_id: entry_expr_id, expr_type: entry_expr_type,
         var_name:, access_prefix: prev_access_prefix)
     access_prefix := `['{{key}}']{{prev_access_prefix}}`
 */
-DECLARE RECURSIVE VIEW var_mentioned_in_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, expr_type TEXT, var_name TEXT, access_prefix TEXT);
-CREATE MATERIALIZED VIEW var_mentioned_in_expr AS
+DECLARE RECURSIVE VIEW var_referenced_in_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, expr_type TEXT, var_name TEXT, access_prefix TEXT, array_entry_index INTEGER);
+CREATE MATERIALIZED VIEW var_referenced_in_expr AS
     SELECT DISTINCT
         var_expr.pipeline_id,
         var_expr.rule_id,
         var_expr.expr_id,
         'var_expr' AS expr_type,
         var_expr.var_name,
-        '' AS access_prefix
+        '' AS access_prefix,
+        NULL AS array_entry_index
     FROM var_expr
 
     UNION
@@ -565,18 +946,19 @@ CREATE MATERIALIZED VIEW var_mentioned_in_expr AS
         aggr_expr.rule_id,
         aggr_expr.expr_id,
         'aggr_expr' AS expr_type,
-        var_mentioned_in_expr.var_name,
-        '' AS access_prefix
+        var_referenced_in_expr.var_name,
+        '' AS access_prefix,
+        NULL AS array_entry_index
     FROM aggr_expr
     JOIN fn_val_arg
         ON aggr_expr.pipeline_id = fn_val_arg.pipeline_id
         AND aggr_expr.rule_id = fn_val_arg.rule_id
         AND aggr_expr.fncall_id = fn_val_arg.fncall_id
-    JOIN var_mentioned_in_expr
-        ON fn_val_arg.pipeline_id = var_mentioned_in_expr.pipeline_id
-        AND fn_val_arg.rule_id = var_mentioned_in_expr.rule_id
-        AND fn_val_arg.expr_id = var_mentioned_in_expr.expr_id
-        AND fn_val_arg.expr_type = var_mentioned_in_expr.expr_type
+    JOIN var_referenced_in_expr
+        ON fn_val_arg.pipeline_id = var_referenced_in_expr.pipeline_id
+        AND fn_val_arg.rule_id = var_referenced_in_expr.rule_id
+        AND fn_val_arg.expr_id = var_referenced_in_expr.expr_id
+        AND fn_val_arg.expr_type = var_referenced_in_expr.expr_type
     
     UNION
 
@@ -585,18 +967,19 @@ CREATE MATERIALIZED VIEW var_mentioned_in_expr AS
         aggr_expr.rule_id,
         aggr_expr.expr_id,
         'aggr_expr' AS expr_type,
-        var_mentioned_in_expr.var_name,
-        '' AS access_prefix
+        var_referenced_in_expr.var_name,
+        '' AS access_prefix,
+        NULL AS array_entry_index
     FROM aggr_expr
     JOIN fn_kv_arg
         ON aggr_expr.pipeline_id = fn_kv_arg.pipeline_id
         AND aggr_expr.rule_id = fn_kv_arg.rule_id
         AND aggr_expr.fncall_id = fn_kv_arg.fncall_id
-    JOIN var_mentioned_in_expr
-        ON fn_kv_arg.pipeline_id = var_mentioned_in_expr.pipeline_id
-        AND fn_kv_arg.rule_id = var_mentioned_in_expr.rule_id
-        AND fn_kv_arg.expr_id = var_mentioned_in_expr.expr_id
-        AND fn_kv_arg.expr_type = var_mentioned_in_expr.expr_type
+    JOIN var_referenced_in_expr
+        ON fn_kv_arg.pipeline_id = var_referenced_in_expr.pipeline_id
+        AND fn_kv_arg.rule_id = var_referenced_in_expr.rule_id
+        AND fn_kv_arg.expr_id = var_referenced_in_expr.expr_id
+        AND fn_kv_arg.expr_type = var_referenced_in_expr.expr_type
 
     UNION
 
@@ -606,7 +989,8 @@ CREATE MATERIALIZED VIEW var_mentioned_in_expr AS
         var_mentioned_in_sql_expr.expr_id,
         'sql_expr' AS expr_type,
         var_mentioned_in_sql_expr.var_name,
-        '' AS access_prefix
+        '' AS access_prefix,
+        NULL AS array_entry_index
     FROM var_mentioned_in_sql_expr
 
     UNION
@@ -616,18 +1000,19 @@ CREATE MATERIALIZED VIEW var_mentioned_in_expr AS
         array_expr.rule_id,
         array_expr.expr_id,
         CAST('array_expr' AS TEXT) AS expr_type,
-        var_mentioned_in_expr.var_name,
-        ('[' || array_entry."index" || ']' || var_mentioned_in_expr.access_prefix) AS access_prefix
+        var_referenced_in_expr.var_name,
+        ('[' || array_entry."index" || ']' || var_referenced_in_expr.access_prefix) AS access_prefix,
+        NULL AS array_entry_index
     FROM array_expr
     JOIN array_entry
         ON array_expr.pipeline_id = array_entry.pipeline_id
         AND array_expr.rule_id = array_entry.rule_id
         AND array_entry.array_id = array_expr.array_id
-    JOIN var_mentioned_in_expr
-        ON array_expr.pipeline_id = var_mentioned_in_expr.pipeline_id
-        AND array_expr.rule_id = var_mentioned_in_expr.rule_id
-        AND array_entry.expr_id = var_mentioned_in_expr.expr_id
-        AND array_entry.expr_type = var_mentioned_in_expr.expr_type
+    JOIN var_referenced_in_expr
+        ON array_expr.pipeline_id = var_referenced_in_expr.pipeline_id
+        AND array_expr.rule_id = var_referenced_in_expr.rule_id
+        AND array_entry.expr_id = var_referenced_in_expr.expr_id
+        AND array_entry.expr_type = var_referenced_in_expr.expr_type
 
     UNION
 
@@ -636,23 +1021,26 @@ CREATE MATERIALIZED VIEW var_mentioned_in_expr AS
         dict_expr.rule_id,
         dict_expr.expr_id,
         'dict_expr' AS expr_type,
-        var_mentioned_in_expr.var_name,
-        ('[''' || dict_entry.key || ''']' || var_mentioned_in_expr.access_prefix) AS access_prefix
+        var_referenced_in_expr.var_name,
+        ('[''' || dict_entry.key || ''']' || var_referenced_in_expr.access_prefix) AS access_prefix,
+        NULL AS array_entry_index
     FROM dict_expr
     JOIN dict_entry
         ON dict_expr.pipeline_id = dict_entry.pipeline_id
         AND dict_expr.rule_id = dict_entry.rule_id
         AND dict_entry.dict_id = dict_expr.dict_id
-    JOIN var_mentioned_in_expr
-        ON dict_expr.pipeline_id = var_mentioned_in_expr.pipeline_id
-        AND dict_expr.rule_id = var_mentioned_in_expr.rule_id
-        AND dict_entry.expr_id = var_mentioned_in_expr.expr_id
-        AND dict_entry.expr_type = var_mentioned_in_expr.expr_type;
+    JOIN var_referenced_in_expr
+        ON dict_expr.pipeline_id = var_referenced_in_expr.pipeline_id
+        AND dict_expr.rule_id = var_referenced_in_expr.rule_id
+        AND dict_entry.expr_id = var_referenced_in_expr.expr_id
+        AND dict_entry.expr_type = var_referenced_in_expr.expr_type;
 
 /*
-var_bound_in_fact(pipeline_id:, rule_id:, fact_id:, key:, negated:, var_name:, fact_index:, sql:) <-
+var_bound_in_fact(
+    pipeline_id:, rule_id:, fact_id:, key:, negated:, var_name:, fact_index:, sql:
+) <-
     fact_arg(pipeline_id:, fact_id:, expr_id:, expr_type:)
-    var_mentioned_in_expr(pipeline_id:, expr_id:, expr_type:, var_name:)
+    var_referenced_in_expr(pipeline_id:, expr_id:, expr_type:, var_name:)
     fact_alias(pipeline_id:, rule_id:, fact_id:, negated:, fact_index:)
     sql := `"{{alias}}"."{{key}}"{{access_prefix}}`
 */
@@ -664,13 +1052,13 @@ CREATE MATERIALIZED VIEW var_bound_in_fact AS
         fact_arg.key,
         fact_alias.negated,
         fact_alias.fact_index,
-        var_mentioned_in_expr.var_name,
-        ('"' || fact_alias.alias || '"."' || fact_arg.key || '"' || var_mentioned_in_expr.access_prefix) AS sql
+        var_referenced_in_expr.var_name,
+        ('"' || fact_alias.alias || '"."' || fact_arg.key || '"' || var_referenced_in_expr.access_prefix) AS sql
     FROM fact_arg
-    JOIN var_mentioned_in_expr
-        ON fact_arg.pipeline_id = var_mentioned_in_expr.pipeline_id
-        AND fact_arg.expr_id = var_mentioned_in_expr.expr_id
-        AND fact_arg.expr_type = var_mentioned_in_expr.expr_type
+    JOIN var_referenced_in_expr
+        ON fact_arg.pipeline_id = var_referenced_in_expr.pipeline_id
+        AND fact_arg.expr_id = var_referenced_in_expr.expr_id
+        AND fact_arg.expr_type = var_referenced_in_expr.expr_type
     JOIN fact_alias
         ON fact_arg.pipeline_id = fact_alias.pipeline_id
         AND fact_arg.fact_id = fact_alias.fact_id;
@@ -699,8 +1087,8 @@ CREATE MATERIALIZED VIEW canonical_fact_var_sql AS
 /*
 match_var_dependency(pipeline_id:, rule_id:, var_name:, parent_var_name:) <-
     body_match(pipeline_id:, rule_id:, match_id:, left_expr_id:, left_expr_type:, right_expr_id:, right_expr_type:)
-    var_mentioned_in_expr(pipeline_id:, expr_id: left_expr_id, expr_type: left_expr_type, var_name:)
-    var_mentioned_in_expr(pipeline_id:, expr_id: right_expr_id, expr_type: right_expr_type, var_name: parent_var_name)
+    var_referenced_in_expr(pipeline_id:, expr_id: left_expr_id, expr_type: left_expr_type, var_name:)
+    var_referenced_in_expr(pipeline_id:, expr_id: right_expr_id, expr_type: right_expr_type, var_name: parent_var_name)
     #all_records_inserted(pipeline_id:)
     not var_bound_in_fact(pipeline_id:, rule_id:, var_name:, negated: false)
 match_var_dependency(pipeline_id:, rule_id:, var_name:, parent_var_name:) <-
@@ -715,11 +1103,11 @@ CREATE MATERIALIZED VIEW match_var_dependency AS
         l.var_name,
         r.var_name AS parent_var_name
     FROM body_match
-    JOIN var_mentioned_in_expr AS l
+    JOIN var_referenced_in_expr AS l
         ON body_match.pipeline_id = l.pipeline_id
         AND body_match.left_expr_id = l.expr_id
         AND body_match.left_expr_type = l.expr_type
-    JOIN var_mentioned_in_expr AS r
+    JOIN var_referenced_in_expr AS r
         ON body_match.pipeline_id = r.pipeline_id
         AND body_match.right_expr_id = r.expr_id
         AND body_match.right_expr_type = r.expr_type
