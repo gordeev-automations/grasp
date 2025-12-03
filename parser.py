@@ -26,7 +26,7 @@ def merge_records(records1, records2):
 
 
 
-def records_from_val_args(rule_id, fncall_id, fncall_type, val_args, idgen):
+def records_from_val_args(rule_id, fncall_id, val_args, idgen):
     records = []
     for index, arg_expr in enumerate(val_args):
         match arg_expr:
@@ -39,7 +39,6 @@ def records_from_val_args(rule_id, fncall_id, fncall_type, val_args, idgen):
                         'fn_val_arg': [{
                             'rule_id': rule_id,
                             'fncall_id': fncall_id,
-                            'fncall_expr_type': fncall_type,
                             'arg_index': index,
                             'expr_id': expr_id,
                             'expr_type': expr_type,
@@ -55,7 +54,7 @@ def records_from_val_args(rule_id, fncall_id, fncall_type, val_args, idgen):
                 raise Exception(f"Invalid arg expr {arg_expr}")
     return records
 
-def records_from_kv_args(rule_id, fncall_id, fncall_type, kv_args, idgen):
+def records_from_kv_args(rule_id, fncall_id, kv_args, idgen):
     records = []
     for arg in kv_args:
         match arg:
@@ -71,7 +70,6 @@ def records_from_kv_args(rule_id, fncall_id, fncall_type, kv_args, idgen):
                         'fn_kv_arg': [{
                             'rule_id': rule_id,
                             'fncall_id': fncall_id,
-                            'fncall_expr_type': fncall_type,
                             'key': key,
                             'expr_id': expr_id,
                             'expr_type': expr_type,
@@ -95,11 +93,12 @@ def records_from_aggregated_expr(aggr_expr, rule_id, expr_id, fn_name, fn_args, 
     match fn_args:
         case None:
             return {
-                'aggr_expr': [{
+                'fncall_expr': [{
                     'rule_id': rule_id,
                     'expr_id': expr_id,
                     'fn_name': fn_name,
                     'fncall_id': fncall_id,
+                    'aggregated': True,
 
                     'start_line': aggr_expr.meta.container_line,
                     'start_column': aggr_expr.meta.container_column,
@@ -112,11 +111,12 @@ def records_from_aggregated_expr(aggr_expr, rule_id, expr_id, fn_name, fn_args, 
                 merge_records,[
                     *records_from_val_args(rule_id, fncall_id, 'aggr_expr', val_args, idgen),
                     {
-                        'aggr_expr': [{
+                        'fncall_expr': [{
                             'rule_id': rule_id,
                             'expr_id': expr_id,
                             'fn_name': fn_name,
                             'fncall_id': fncall_id,
+                            'aggregated': True,
 
                             'start_line': aggr_expr.meta.container_line,
                             'start_column': aggr_expr.meta.container_column,
@@ -135,11 +135,12 @@ def records_from_aggregated_expr(aggr_expr, rule_id, expr_id, fn_name, fn_args, 
                     *records_from_val_args(rule_id, fncall_id, 'aggr_expr', val_args, idgen),
                     *records_from_kv_args(rule_id, fncall_id, 'aggr_expr', kv_args, idgen),
                     {
-                        'aggr_expr': [{
+                        'fncall_expr': [{
                             'rule_id': rule_id,
                             'expr_id': expr_id,
                             'fn_name': fn_name,
                             'fncall_id': fncall_id,
+                            'aggregated': True,
 
                             'start_line': aggr_expr.meta.container_line,
                             'start_column': aggr_expr.meta.container_column,
@@ -355,11 +356,11 @@ def records_from_expr(expr, rule_id, expr_id, idgen):
             Token(type='IDENTIFIER', value=fn_name),
             Tree(data=Token(type='RULE', value='fn_args'), children=fn_args),
         ]):
-            return 'aggr_expr', records_from_aggregated_expr(expr, rule_id, expr_id, fn_name, fn_args, idgen)
+            return 'fncall_expr', records_from_aggregated_expr(expr, rule_id, expr_id, fn_name, fn_args, idgen)
         case Tree(data=Token(type='RULE', value='aggregated_expr'), children=[
             Token(type='IDENTIFIER', value=fn_name),
         ]):
-            return 'aggr_expr', records_from_aggregated_expr(expr, rule_id, expr_id, fn_name, None, idgen)
+            return 'fncall_expr', records_from_aggregated_expr(expr, rule_id, expr_id, fn_name, None, idgen)
         case Tree(data=Token(type='RULE', value='dict_expr'), children=[
             Tree(data=Token(type='RULE', value='kv_args'), children=kv_args),
         ]):

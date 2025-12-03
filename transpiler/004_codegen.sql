@@ -132,20 +132,19 @@ CREATE MATERIALIZED VIEW substituted_sql_expr AS
 DECLARE RECURSIVE VIEW substituted_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, expr_type TEXT, sql TEXT, aggregated BOOLEAN);
 
 /*
-substituted_val_arg(pipeline_id:, rule_id:, fncall_id:, fncall_expr_type:, arg_index:, sql:) <-
+substituted_val_arg(pipeline_id:, rule_id:, fncall_id:, arg_index:, sql:) <-
     fn_val_arg(
-        pipeline_id:, rule_id:, fncall_id:, fncall_expr_type:,
+        pipeline_id:, rule_id:, fncall_id:,
         arg_index:, expr_id:, expr_type:)
     substituted_expr(
         pipeline_id:, rule_id:, expr_id:, expr_type:, sql:)
 */
-DECLARE RECURSIVE VIEW substituted_val_arg (pipeline_id TEXT, rule_id TEXT, fncall_id TEXT, fncall_expr_type TEXT, arg_index INTEGER, sql TEXT);
+DECLARE RECURSIVE VIEW substituted_val_arg (pipeline_id TEXT, rule_id TEXT, fncall_id TEXT, arg_index INTEGER, sql TEXT);
 CREATE MATERIALIZED VIEW substituted_val_arg AS
     SELECT DISTINCT
         a.pipeline_id,
         a.rule_id,
         a.fncall_id,
-        a.fncall_expr_type,
         a.arg_index,
         b.sql
     FROM fn_val_arg AS a
@@ -156,20 +155,19 @@ CREATE MATERIALIZED VIEW substituted_val_arg AS
         AND a.expr_type = b.expr_type;
 
 /*
-substituted_kv_arg(pipeline_id:, rule_id:, fncall_id:, fncall_expr_type:, key:, sql:) <-
+substituted_kv_arg(pipeline_id:, rule_id:, fncall_id:, key:, sql:) <-
     fn_kv_arg(
-        pipeline_id:, rule_id:, fncall_id:, fncall_expr_type:,
+        pipeline_id:, rule_id:, fncall_id:,
         key:, expr_id:, expr_type:)
     substituted_expr(
         pipeline_id:, rule_id:, expr_id:, expr_type:, sql:)
 */
-DECLARE RECURSIVE VIEW substituted_kv_arg (pipeline_id TEXT, rule_id TEXT, fncall_id TEXT, fncall_expr_type TEXT, key TEXT, sql TEXT);
+DECLARE RECURSIVE VIEW substituted_kv_arg (pipeline_id TEXT, rule_id TEXT, fncall_id TEXT, key TEXT, sql TEXT);
 CREATE MATERIALIZED VIEW substituted_kv_arg AS
     SELECT DISTINCT
         a.pipeline_id,
         a.rule_id,
         a.fncall_id,
-        a.fncall_expr_type,
         a.key,
         b.sql
     FROM fn_kv_arg AS a
@@ -192,7 +190,7 @@ substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
         pipeline_id:, rule_id:, expr_id:, sql_name:, fncall_id:,
         val_arg_count: 1, kv_arg_keys: [])
     substituted_val_arg(
-        pipeline_id:, rule_id:, fncall_id:, fncall_expr_type: "aggr_expr",
+        pipeline_id:, rule_id:, fncall_id:,
         arg_index: 0, sql: arg_sql)
     sql := `{{sql_name}}({{arg_sql}})`
 substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
@@ -201,10 +199,10 @@ substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
         val_arg_count: 1, kv_arg_keys: ["by"])
     fn_name in ["argmin", "argmax"]
     substituted_val_arg(
-        pipeline_id:, rule_id:, fncall_id:, fncall_expr_type: "aggr_expr",
+        pipeline_id:, rule_id:, fncall_id:,
         arg_index: 0, sql: arg_sql)
     substituted_kv_arg(
-        pipeline_id:, rule_id:, fncall_id:, fncall_expr_type: "aggr_expr",
+        pipeline_id:, rule_id:, fncall_id:,
         key: "by", sql: by_sql)
     sql := `{{sql_name}}({{arg_sql}}, {{by_sql}})`
 */
@@ -232,7 +230,6 @@ CREATE MATERIALIZED VIEW substituted_aggr_expr AS
         ON a.pipeline_id = c.pipeline_id
         AND a.rule_id = c.rule_id
         AND a.fncall_id = c.fncall_id
-        AND c.fncall_expr_type = 'aggr_expr'
         AND c.arg_index = 0
     WHERE a.val_arg_count = 1
     AND ARRAY_SIZE(a.kv_arg_keys) = 0
@@ -249,13 +246,11 @@ CREATE MATERIALIZED VIEW substituted_aggr_expr AS
         ON a.pipeline_id = c.pipeline_id
         AND a.rule_id = c.rule_id
         AND a.fncall_id = c.fncall_id
-        AND c.fncall_expr_type = 'aggr_expr'
         AND c.arg_index = 0
     JOIN substituted_kv_arg AS d
         ON a.pipeline_id = d.pipeline_id
         AND a.rule_id = d.rule_id
         AND a.fncall_id = d.fncall_id
-        AND d.fncall_expr_type = 'aggr_expr'
         AND d.key = 'by'
     WHERE a.fn_name in ('argmin', 'argmax')
     AND a.val_arg_count = 1
@@ -397,7 +392,7 @@ substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "binop_expr", sql:
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "var_expr", sql:, aggregated:) <-
     var_expr(pipeline_id:, rule_id:, expr_id:, var_name:)
     canonical_var_bound_sql(pipeline_id:, rule_id:, var_name:, sql:, aggregated:)
-substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "aggr_expr", sql:, aggregated: true) <-
+substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "fncall_expr", sql:, aggregated: true) <-
     substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "array_expr", sql:, aggregated:) <-
     substituted_array_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:)
@@ -439,7 +434,7 @@ CREATE MATERIALIZED VIEW substituted_expr AS
 
     UNION
 
-    SELECT e.pipeline_id, e.rule_id, e.expr_id, 'aggr_expr' AS expr_type, e.sql, true AS aggregated
+    SELECT e.pipeline_id, e.rule_id, e.expr_id, 'fncall_expr' AS expr_type, e.sql, true AS aggregated
     FROM substituted_aggr_expr AS e
 
     UNION

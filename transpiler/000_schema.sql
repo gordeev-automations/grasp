@@ -66,25 +66,13 @@ CREATE TABLE rule_param (
     end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
-CREATE TABLE aggr_expr (
-    pipeline_id TEXT NOT NULL,
-    rule_id TEXT NOT NULL,
-    expr_id TEXT NOT NULL,
-    fn_name TEXT NOT NULL,
-    fncall_id TEXT NOT NULL,
-
-    start_line INTEGER NOT NULL,
-    start_column INTEGER NOT NULL,
-    end_line INTEGER NOT NULL,
-    end_column INTEGER NOT NULL
-) WITH ('materialized' = 'true');
-
 CREATE TABLE fncall_expr (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
     fn_name TEXT NOT NULL,
     fncall_id TEXT NOT NULL,
+    aggregated BOOLEAN NOT NULL,
 
     start_line INTEGER NOT NULL,
     start_column INTEGER NOT NULL,
@@ -96,7 +84,6 @@ CREATE TABLE fn_val_arg (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     fncall_id TEXT NOT NULL,
-    fncall_expr_type TEXT NOT NULL,
     arg_index INTEGER NOT NULL,
     expr_id TEXT NOT NULL,
     expr_type TEXT NOT NULL,
@@ -111,7 +98,6 @@ CREATE TABLE fn_kv_arg (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     fncall_id TEXT NOT NULL,
-    fncall_expr_type TEXT NOT NULL,
     "key" TEXT NOT NULL,
     expr_id TEXT NOT NULL,
     expr_type TEXT NOT NULL,

@@ -67,21 +67,22 @@ CREATE MATERIALIZED VIEW "error:match_right_expr_unresolved" AS
 
 /*
 error:invalid_aggr_expr(pipeline_id:, rule_id:, expr_id:) <-
-    aggr_expr(pipeline_id:, rule_id:, expr_id:)
+    fncall_expr(pipeline_id:, rule_id:, expr_id:, aggregated: true)
     not aggr_expr_matching_signature(pipeline_id:, rule_id:, expr_id:)
 */
 CREATE MATERIALIZED VIEW "error:invalid_aggr_expr" AS
     SELECT DISTINCT
-        aggr_expr.pipeline_id,
-        aggr_expr.rule_id,
-        aggr_expr.expr_id
-    FROM aggr_expr
-    WHERE NOT EXISTS (
+        fncall_expr.pipeline_id,
+        fncall_expr.rule_id,
+        fncall_expr.expr_id
+    FROM fncall_expr
+    WHERE fncall_expr.aggregated
+    AND NOT EXISTS (
         SELECT 1
         FROM aggr_expr_matching_signature
-        WHERE aggr_expr.pipeline_id = aggr_expr_matching_signature.pipeline_id
-        AND aggr_expr.rule_id = aggr_expr_matching_signature.rule_id
-        AND aggr_expr.expr_id = aggr_expr_matching_signature.expr_id
+        WHERE fncall_expr.pipeline_id = aggr_expr_matching_signature.pipeline_id
+        AND fncall_expr.rule_id = aggr_expr_matching_signature.rule_id
+        AND fncall_expr.expr_id = aggr_expr_matching_signature.expr_id
     );
 
 /*
