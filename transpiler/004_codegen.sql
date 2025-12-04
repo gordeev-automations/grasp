@@ -7,9 +7,11 @@
 /*
 canonical_var_bound_sql(pipeline_id:, rule_id:, var_name:, sql:, aggregated: false) <-
     canonical_fact_var_sql(pipeline_id:, rule_id:, var_name:, sql:)
-canonical_var_bound_sql(pipeline_id:, rule_id:, var_name:, sql: min<sql>, aggregated: some<aggregated>) <-
-    var_bound_via_match(pipeline_id:, rule_id:, var_name:, sql:, aggregated:)
-    not canonical_fact_var_sql(pipeline_id:, rule_id:, var_name:)
+#canonical_var_bound_sql(
+#    pipeline_id:, rule_id:, var_name:, sql: min<sql>, aggregated: some<aggregated>
+#) <-
+#    var_bound_via_match(pipeline_id:, rule_id:, var_name:, sql:, aggregated:)
+#    not canonical_fact_var_sql(pipeline_id:, rule_id:, var_name:)
 */
 DECLARE RECURSIVE VIEW var_bound_via_match (pipeline_id TEXT, rule_id TEXT, match_id TEXT, var_name TEXT, sql TEXT, aggregated BOOLEAN);
 DECLARE RECURSIVE VIEW canonical_var_bound_sql (pipeline_id TEXT, rule_id TEXT, var_name TEXT, sql TEXT, aggregated BOOLEAN);
@@ -22,23 +24,24 @@ CREATE MATERIALIZED VIEW canonical_var_bound_sql AS
         false AS aggregated
     FROM canonical_fact_var_sql
 
-    UNION
+    -- UNION
 
-    SELECT DISTINCT
-        var_bound_via_match.pipeline_id,
-        var_bound_via_match.rule_id,
-        var_bound_via_match.var_name,
-        MIN(var_bound_via_match.sql) AS sql,
-        SOME(var_bound_via_match.aggregated) AS aggregated
-    FROM var_bound_via_match
-    WHERE NOT EXISTS (
-        SELECT 1
-        FROM canonical_fact_var_sql
-        WHERE canonical_fact_var_sql.pipeline_id = var_bound_via_match.pipeline_id
-        AND canonical_fact_var_sql.rule_id = var_bound_via_match.rule_id
-        AND canonical_fact_var_sql.var_name = var_bound_via_match.var_name
-    )
-    GROUP BY var_bound_via_match.pipeline_id, var_bound_via_match.rule_id, var_bound_via_match.var_name;
+    -- SELECT DISTINCT
+    --     var_bound_via_match.pipeline_id,
+    --     var_bound_via_match.rule_id,
+    --     var_bound_via_match.var_name,
+    --     MIN(var_bound_via_match.sql) AS sql,
+    --     SOME(var_bound_via_match.aggregated) AS aggregated
+    -- FROM var_bound_via_match
+    -- WHERE NOT EXISTS (
+    --     SELECT 1
+    --     FROM canonical_fact_var_sql
+    --     WHERE canonical_fact_var_sql.pipeline_id = var_bound_via_match.pipeline_id
+    --     AND canonical_fact_var_sql.rule_id = var_bound_via_match.rule_id
+    --     AND canonical_fact_var_sql.var_name = var_bound_via_match.var_name
+    -- )
+    -- GROUP BY var_bound_via_match.pipeline_id, var_bound_via_match.rule_id, var_bound_via_match.var_name
+    ;
 
 /*
 sql_expr_template_part_with_substitution(pipeline_id:, rule_id:, expr_id:, part:, index:) <-
@@ -463,50 +466,50 @@ CREATE MATERIALIZED VIEW match_right_expr_sql AS
         AND a.right_expr_id = b.expr_id
         AND a.right_expr_type = b.expr_type;
 
-/*
-var_bound_via_match(pipeline_id:, rule_id:, match_id:, var_name:, sql:, aggregated:) <-
-    body_match(pipeline_id:, rule_id:, match_id:, left_expr_id:, left_expr_type:)
-    var_referenced_in_expr(pipeline_id:, expr_id: left_expr_id, expr_type: left_expr_type, var_name:, access_prefix:)
-    match_right_expr_sql(pipeline_id:, rule_id:, match_id:, sql: right_sql, aggregated:)
-    sql := `{{right_sql}}{{access_prefix}}`
-var_bound_via_match(pipeline_id:, rule_id:, match_id: NULL, var_name:, sql:, aggregated:) <-
-    rule_param(pipeline_id:, rule_id:, key: var_name, expr_id:, expr_type:)
-    substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:, aggregated:)
-*/
-CREATE MATERIALIZED VIEW var_bound_via_match AS
-    SELECT DISTINCT
-        body_match.pipeline_id,
-        body_match.rule_id,
-        body_match.match_id,
-        var_referenced_in_expr.var_name,
-        (match_right_expr_sql.sql || var_referenced_in_expr.access_prefix) AS sql,
-        match_right_expr_sql.aggregated
-    FROM body_match
-    JOIN var_referenced_in_expr
-        ON body_match.pipeline_id = var_referenced_in_expr.pipeline_id
-        AND body_match.rule_id = var_referenced_in_expr.rule_id
-        AND body_match.left_expr_id = var_referenced_in_expr.expr_id
-        AND body_match.left_expr_type = var_referenced_in_expr.expr_type
-    JOIN match_right_expr_sql
-        ON body_match.pipeline_id = match_right_expr_sql.pipeline_id
-        AND body_match.rule_id = match_right_expr_sql.rule_id
-        AND body_match.match_id = match_right_expr_sql.match_id
+-- /*
+-- var_bound_via_match(pipeline_id:, rule_id:, match_id:, var_name:, sql:, aggregated:) <-
+--     body_match(pipeline_id:, rule_id:, match_id:, left_expr_id:, left_expr_type:)
+--     var_referenced_in_fact_pattern_expr(pipeline_id:, expr_id: left_expr_id, expr_type: left_expr_type, var_name:, access_prefix:)
+--     match_right_expr_sql(pipeline_id:, rule_id:, match_id:, sql: right_sql, aggregated:)
+--     sql := `{{right_sql}}{{access_prefix}}`
+-- var_bound_via_match(pipeline_id:, rule_id:, match_id: NULL, var_name:, sql:, aggregated:) <-
+--     rule_param(pipeline_id:, rule_id:, key: var_name, expr_id:, expr_type:)
+--     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:, aggregated:)
+-- */
+-- CREATE MATERIALIZED VIEW var_bound_via_match AS
+--     SELECT DISTINCT
+--         body_match.pipeline_id,
+--         body_match.rule_id,
+--         body_match.match_id,
+--         var_referenced_in_fact_pattern_expr.var_name,
+--         (match_right_expr_sql.sql || var_referenced_in_fact_pattern_expr.access_prefix) AS sql,
+--         match_right_expr_sql.aggregated
+--     FROM body_match
+--     JOIN var_referenced_in_fact_pattern_expr
+--         ON body_match.pipeline_id = var_referenced_in_fact_pattern_expr.pipeline_id
+--         AND body_match.rule_id = var_referenced_in_fact_pattern_expr.rule_id
+--         AND body_match.left_expr_id = var_referenced_in_fact_pattern_expr.expr_id
+--         AND body_match.left_expr_type = var_referenced_in_fact_pattern_expr.expr_type
+--     JOIN match_right_expr_sql
+--         ON body_match.pipeline_id = match_right_expr_sql.pipeline_id
+--         AND body_match.rule_id = match_right_expr_sql.rule_id
+--         AND body_match.match_id = match_right_expr_sql.match_id
     
-    UNION
+--     UNION
     
-    SELECT DISTINCT
-        rule_param.pipeline_id,
-        rule_param.rule_id,
-        NULL AS match_id,
-        rule_param.key AS var_name,
-        substituted_expr.sql AS sql,
-        substituted_expr.aggregated
-    FROM rule_param
-    JOIN substituted_expr
-        ON rule_param.pipeline_id = substituted_expr.pipeline_id
-        AND rule_param.rule_id = substituted_expr.rule_id
-        AND rule_param.expr_id = substituted_expr.expr_id
-        AND rule_param.expr_type = substituted_expr.expr_type;
+--     SELECT DISTINCT
+--         rule_param.pipeline_id,
+--         rule_param.rule_id,
+--         NULL AS match_id,
+--         rule_param.key AS var_name,
+--         substituted_expr.sql AS sql,
+--         substituted_expr.aggregated
+--     FROM rule_param
+--     JOIN substituted_expr
+--         ON rule_param.pipeline_id = substituted_expr.pipeline_id
+--         AND rule_param.rule_id = substituted_expr.rule_id
+--         AND rule_param.expr_id = substituted_expr.expr_id
+--         AND rule_param.expr_type = substituted_expr.expr_type;
 
 /*
 sql_where_cond(pipeline_id:, rule_id:, cond_id:, sql:) <-

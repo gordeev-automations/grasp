@@ -16,8 +16,8 @@ last_button_callback_data(callback_data:) <-
 buttons_after_three(buttons:) <-
 	tg_update(
 		tg_bot_username: "some_nonexisting_bot",
-		tg_update: { callback_query: { message: { reply_markup: { inline_keyboard: }}}})
-	[_, _, _, *buttons] := inline_keyboard
+		tg_update: { callback_query: { message: { reply_markup: {
+			inline_keyboard: [_, _, _, *buttons] }}}})
 
 json_fields(important_ids:, chat_info:) <-
 	tg_update(

@@ -169,6 +169,46 @@ CREATE MATERIALIZED VIEW "error:two_asterisk_vars_in_array_pattern" AS
         AND pattern_expr.expr_type = 'array_expr';
 
 /*
+error:asterisk_used_outside_of_array(pipeline_id:, rule_id:, expr_id:) <-
+    var_expr(pipeline_id:, rule_id:, expr_id:, special_prefix: "*")
+    not array_entry(pipeline_id:, rule_id:, expr_id:, expr_type: "var_expr")
+*/
+CREATE MATERIALIZED VIEW "error:asterisk_used_outside_of_array" AS
+    SELECT DISTINCT
+        var_expr.pipeline_id,
+        var_expr.rule_id,
+        var_expr.expr_id
+    FROM var_expr
+    WHERE var_expr.special_prefix = '*'
+    AND NOT EXISTS (
+        SELECT 1
+        FROM array_entry
+        WHERE var_expr.pipeline_id = array_entry.pipeline_id
+        AND var_expr.rule_id = array_entry.rule_id
+        AND var_expr.expr_id = array_entry.expr_id
+    );
+
+/*
+error:asterisk_used_outside_of_pattern_expr(pipeline_id:, rule_id:, expr_id:) <-
+    var_expr(pipeline_id:, rule_id:, expr_id:, special_prefix: "*")
+    not pattern_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "var_expr")
+*/
+CREATE MATERIALIZED VIEW "error:asterisk_used_outside_of_pattern_expr" AS
+    SELECT DISTINCT
+        var_expr.pipeline_id,
+        var_expr.rule_id,
+        var_expr.expr_id
+    FROM var_expr
+    WHERE var_expr.special_prefix = '*'
+    AND NOT EXISTS (
+        SELECT 1
+        FROM pattern_expr
+        WHERE var_expr.pipeline_id = pattern_expr.pipeline_id
+        AND var_expr.rule_id = pattern_expr.rule_id
+        AND var_expr.expr_id = pattern_expr.expr_id
+    );
+
+/*
 error(pipeline_id:, error_type: "unbound_var_in_negative_fact") <-
     error:unbound_var_in_negative_fact(pipeline_id:)
 error(pipeline_id:, error_type: "neg_fact_sql_unresolved") <-
@@ -181,6 +221,10 @@ error(pipeline_id:, error_type: "two_asterisk_vars_in_array_pattern") <-
     error:two_asterisk_vars_in_array_pattern(pipeline_id:)
 error(pipeline_id:, error_type: "expr_that_is_neither_pattern_nor_value") <-
     error:expr_that_is_neither_pattern_nor_value(pipeline_id:)
+error(pipeline_id:, error_type: "asterisk_used_outside_of_array") <-
+    error:asterisk_used_outside_of_array(pipeline_id:)
+error(pipeline_id:, error_type: "asterisk_used_outside_of_pattern_expr") <-
+    error:asterisk_used_outside_of_pattern_expr(pipeline_id:)
 */
 CREATE MATERIALIZED VIEW "error" AS
     SELECT DISTINCT
@@ -211,5 +255,15 @@ CREATE MATERIALIZED VIEW "error" AS
     SELECT DISTINCT
         "error:expr_that_is_neither_pattern_nor_value".pipeline_id AS pipeline_id,
         'expr_that_is_neither_pattern_nor_value' AS error_type
-    FROM "error:expr_that_is_neither_pattern_nor_value";
+    FROM "error:expr_that_is_neither_pattern_nor_value"
+    UNION
+    SELECT DISTINCT
+        "error:asterisk_used_outside_of_array".pipeline_id AS pipeline_id,
+        'asterisk_used_outside_of_array' AS error_type
+    FROM "error:asterisk_used_outside_of_array"
+    UNION
+    SELECT DISTINCT
+        "error:asterisk_used_outside_of_pattern_expr".pipeline_id AS pipeline_id,
+        'asterisk_used_outside_of_pattern_expr' AS error_type
+    FROM "error:asterisk_used_outside_of_pattern_expr";
 
