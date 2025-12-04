@@ -986,7 +986,6 @@ fact_pattern_expr_access_sql(
         ON array_expr.pipeline_id = asterisk_array_var_offsets.pipeline_id
         AND array_expr.rule_id = asterisk_array_var_offsets.rule_id
         AND array_expr.array_id = asterisk_array_var_offsets.array_id
-    WHERE array_entry.expr_type = 'var_expr'
     UNION
 /*
 fact_pattern_expr_access_sql(
