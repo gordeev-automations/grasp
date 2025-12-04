@@ -466,16 +466,175 @@ CREATE MATERIALIZED VIEW match_right_expr_sql AS
         AND a.right_expr_id = b.expr_id
         AND a.right_expr_type = b.expr_type;
 
+/*
+# we take left side of the match, and build up access sql
+# assuming that right part of expr is already computed
+match_pattern_expr_access_sql(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
+    parent_array_sql: NULL, array_left_offset: NULL, array_right_offset: NULL,
+) <-
+    # right side is a var that was not matched with array asterisk expression
+    body_match(
+        pipeline_id:, rule_id:, match_id:,
+        left_expr_id: expr_id, left_expr_type: expr_type,
+        right_expr_id:, right_expr_type:)
+    substituted_expr(
+        pipeline_id:, rule_id:, sql:, aggregated:,
+        expr_id: right_expr_id, expr_type: right_expr_type)
+    right_expr_type = "var_expr"
+    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
+    not fact_array_var_matched_with_asterisk(pipeline_id:, rule_id:, var_name:)
+
+match_pattern_expr_access_sql(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
+    parent_array_sql: NULL, array_left_offset: NULL, array_right_offset: NULL,
+) <-
+    # right side expr is not even a var, keep expression as is
+    body_match(
+        pipeline_id:, rule_id:, match_id:,
+        left_expr_id: expr_id, left_expr_type: expr_type,
+        right_expr_id:, right_expr_type:)
+    substituted_expr(
+        pipeline_id:, rule_id:, sql:, aggregated:,
+        expr_id: right_expr_id, expr_type: right_expr_type)
+    not var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id)
+
+match_pattern_expr_access_sql(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
+    parent_array_sql:, array_left_offset:, array_right_offset:,
+) <-
+    # if left side expr is also a var, then just keep as it is
+    body_match(
+        pipeline_id:, rule_id:, match_id:,
+        left_expr_id: expr_id, left_expr_type: "var_expr",
+        right_expr_id:, right_expr_type: "var_expr")
+    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
+    fact_array_var_matched_with_asterisk(
+        pipeline_id:, rule_id:, var_name:,
+        parent_array_sql:, array_left_offset:, array_right_offset:)
+    var_expr(pipeline_id:, rule_id:, expr_id:, var_name:)
+    substituted_expr(
+        pipeline_id:, rule_id:, sql:, aggregated:,
+        expr_id: right_expr_id, expr_type: "var_expr")
+
+match_pattern_expr_access_sql(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
+    parent_array_sql:, array_left_offset:, array_right_offset:,
+) <-
+    # if left side is not a var and not an array, then just use computed sql
+    body_match(
+        pipeline_id:, rule_id:, match_id:,
+        left_expr_id: expr_id, left_expr_type:,
+        right_expr_id:, right_expr_type: "var_expr")
+    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
+    fact_array_var_matched_with_asterisk(
+        pipeline_id:, rule_id:, var_name:,
+        parent_array_sql:, array_left_offset:, array_right_offset:)
+    substituted_expr(
+        pipeline_id:, rule_id:, sql:, aggregated:,
+        expr_id: right_expr_id, expr_type: "var_expr")
+    left_expr_type != "var_expr"
+    left_expr_type != "array_expr"
+
+match_pattern_expr_access_sql(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
+    parent_array_sql: NULL, array_left_offset: NULL, array_right_offset: NULL,
+) <-
+    # left side is array expression, element that is not asterisk var, return indexed expr
+    body_match(
+        pipeline_id:, rule_id:, match_id:,
+        left_expr_id:, left_expr_type: "array_expr",
+        right_expr_id:, right_expr_type: "var_expr")
+    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
+    fact_array_var_matched_with_asterisk(
+        pipeline_id:, rule_id:, var_name:, sql:,
+        parent_array_sql:, array_left_offset:, array_right_offset:)
+    array_expr(pipeline_id:, rule_id:, expr_id: left_expr_id, array_id:)
+    array_entry(
+        pipeline_id:, rule_id:, array_id:,
+        expr_id:, expr_type:, index:)
+
+    not var_expr(pipeline_id:, rule_id:, expr_id:, special_prefix: "*")
+    actual_index := index + array_left_offset - 1
+    sql := `{{parent_array_sql}}[{{actual_index}}]`
+
+match_pattern_expr_access_sql(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
+    parent_array_sql:, array_left_offset:, array_right_offset:,
+) <-
+    # left side is array expression, element is asterisk var, compute offsets
+    body_match(
+        pipeline_id:, rule_id:, match_id:,
+        left_expr_id:, left_expr_type: "array_expr",
+        right_expr_id:, right_expr_type: "var_expr")
+    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
+    fact_array_var_matched_with_asterisk(
+        pipeline_id:, rule_id:, var_name:, sql:,
+        parent_array_sql:, array_left_offset: prev_array_left_offset, array_right_offset: prev_array_right_offset)
+    array_expr(pipeline_id:, rule_id:, expr_id: left_expr_id, array_id:)
+    asterisk_array_var_offsets(
+        pipeline_id:, rule_id:, array_id:, expr_id:,
+        array_left_offset: inner_left_offset, array_right_offset: inner_right_offset)
+
+    array_left_offset := prev_left_offset + inner_left_offset - 1
+    array_right_offset := prev_right_offset + inner_right_offset
+    sql := `GRASP_VARIANT_ARRAY_DROP_SIDES({{parent_array_sql}}, CAST({{array_left_offset}} AS INTEGER UNSIGNED), CAST({{array_right_offset}} AS INTEGER UNSIGNED))`
+
+# now all cases of right side expressions are covered
+# now we just recursively compute access sql expressions for the left side
+match_pattern_expr_access_sql(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
+    parent_array_sql: NULL, array_left_offset: NULL, array_right_offset: NULL,
+) <-
+    match_pattern_expr_access_sql(
+        pipeline_id:, rule_id:, expr_id: dict_expr_id, expr_type: "dict_expr",
+        match_id:, sql: parent_sql, aggregated:)
+    dict_expr(pipeline_id:, rule_id:, expr_id: dict_expr_id, dict_id:)
+    dict_entry(pipeline_id:, rule_id:, dict_id:, key:, expr_id:, expr_type:)
+    sql := `{{parent_sql}}['{{key}}']`
+
+match_pattern_expr_access_sql(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
+    parent_array_sql: NULL, array_left_offset: NULL, array_right_offset: NULL,
+) <-
+    match_pattern_expr_access_sql(
+        pipeline_id:, rule_id:, expr_id: array_expr_id, expr_type: "array_expr",
+        match_id:, sql: parent_sql, aggregated:)
+    array_expr(pipeline_id:, rule_id:, expr_id: array_expr_id, array_id:)
+    array_entry(pipeline_id:, rule_id:, array_id:, index:, expr_id:, expr_type:)
+    not var_expr(pipeline_id:, rule_id:, expr_id:, special_prefix: "*")
+    sql := `{{parent_sql}}[{{index}}]`
+
+match_pattern_expr_access_sql(
+    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
+    parent_array_sql:, array_left_offset:, array_right_offset:,
+) <-
+    match_pattern_expr_access_sql(
+        pipeline_id:, rule_id:, expr_id: array_expr_id, expr_type: "array_expr",
+        match_id:, sql: parent_array_sql, aggregated:)
+    array_expr(pipeline_id:, rule_id:, expr_id: array_expr_id, array_id:)
+    asterisk_array_var_offsets(
+        pipeline_id:, rule_id:, array_id:, expr_id:, array_left_offset:, array_right_offset:)
+    sql := `GRASP_VARIANT_ARRAY_DROP_SIDES({{parent_array_sql}}, CAST({{array_left_offset}} AS INTEGER UNSIGNED), CAST({{array_right_offset}} AS INTEGER UNSIGNED))`
+*/
+
+
+
+
 -- /*
 -- var_bound_via_match(pipeline_id:, rule_id:, match_id:, var_name:, sql:, aggregated:) <-
 --     body_match(pipeline_id:, rule_id:, match_id:, left_expr_id:, left_expr_type:)
---     var_referenced_in_fact_pattern_expr(pipeline_id:, expr_id: left_expr_id, expr_type: left_expr_type, var_name:, access_prefix:)
---     match_right_expr_sql(pipeline_id:, rule_id:, match_id:, sql: right_sql, aggregated:)
+--     var_referenced_in_fact_pattern_expr(
+--         pipeline_id:, expr_id: left_expr_id, expr_type: left_expr_type,
+--         var_name:, access_prefix:)
+--     match_right_expr_sql(
+--         pipeline_id:, rule_id:, match_id:, sql: right_sql, aggregated:)
 --     sql := `{{right_sql}}{{access_prefix}}`
 -- var_bound_via_match(pipeline_id:, rule_id:, match_id: NULL, var_name:, sql:, aggregated:) <-
 --     rule_param(pipeline_id:, rule_id:, key: var_name, expr_id:, expr_type:)
 --     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:, aggregated:)
 -- */
+
 -- CREATE MATERIALIZED VIEW var_bound_via_match AS
 --     SELECT DISTINCT
 --         body_match.pipeline_id,
