@@ -947,9 +947,10 @@ fact_pattern_expr_access_sql(
         FROM var_expr
         WHERE fact_pattern_expr_access_sql.pipeline_id = var_expr.pipeline_id
         AND fact_pattern_expr_access_sql.rule_id = var_expr.rule_id
-        AND fact_pattern_expr_access_sql.expr_id = var_expr.expr_id
+        AND array_entry.expr_id = var_expr.expr_id
         AND var_expr.special_prefix = '*'
     )
+    AND fact_pattern_expr_access_sql.expr_type = 'array_expr'
     UNION
 /*
 fact_pattern_expr_access_sql(

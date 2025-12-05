@@ -209,6 +209,17 @@ CREATE MATERIALIZED VIEW "error:asterisk_used_outside_of_pattern_expr" AS
     );
 
 /*
+# Actually, I think having variable bound twice shouldn't be an error.
+# It should mean that values in both places should be equal.
+# However, it would require some additional work on dependency analysis,
+# so I'll leave it out for now.
+error:var_bound_twice_via_match(
+    pipeline_id:, rule_id:, first_match_id:, second_match_id: expr_id:
+) <-
+    # TODO
+*/
+
+/*
 error(pipeline_id:, error_type: "unbound_var_in_negative_fact") <-
     error:unbound_var_in_negative_fact(pipeline_id:)
 error(pipeline_id:, error_type: "neg_fact_sql_unresolved") <-

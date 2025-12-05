@@ -7,23 +7,23 @@ inline_keyboard_callback_data(first:, second:, third:) <-
 	[*middle_buttons, { callback_data: third }] := rest_buttons
 	[{ callback_data: second }] := middle_buttons
 
-last_button_callback_data(callback_data:) <-
-	tg_update(
-		tg_bot_username: "some_nonexisting_bot",
-		tg_update: { callback_query: { message: { reply_markup: { inline_keyboard: }}}})
-	[{ callback_data: "to_baza" }, _, { callback_data: }] := inline_keyboard
+# last_button_callback_data(callback_data:) <-
+# 	tg_update(
+# 		tg_bot_username: "some_nonexisting_bot",
+# 		tg_update: { callback_query: { message: { reply_markup: { inline_keyboard: }}}})
+# 	[{ callback_data: "to_baza" }, _, { callback_data: }] := inline_keyboard
 
-buttons_after_three(buttons:) <-
-	tg_update(
-		tg_bot_username: "some_nonexisting_bot",
-		tg_update: { callback_query: { message: { reply_markup: {
-			inline_keyboard: [_, _, _, *buttons] }}}})
+# buttons_after_three(buttons:) <-
+# 	tg_update(
+# 		tg_bot_username: "some_nonexisting_bot",
+# 		tg_update: { callback_query: { message: { reply_markup: {
+# 			inline_keyboard: [_, _, _, *buttons] }}}})
 
-json_fields(important_ids:, chat_info:) <-
-	tg_update(
-		tg_update: {
-			update_id:,
-			message: {
-				message_id:,
-				chat: chat_info}})
-	important_ids := [{ update_id: }, { message_id: }]
+# json_fields(important_ids:, chat_info:) <-
+# 	tg_update(
+# 		tg_update: {
+# 			update_id:,
+# 			message: {
+# 				message_id:,
+# 				chat: chat_info}})
+# 	important_ids := [{ update_id: }, { message_id: }]
