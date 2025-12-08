@@ -482,460 +482,451 @@ CREATE MATERIALIZED VIEW match_right_expr_sql AS
 */
 
 /*
-# we take left side of the match, and build up access sql
-# assuming that right part of expr is already computed
-match_pattern_expr_access_sql(
-    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
-    parent_array_sql: NULL, array_left_offset: NULL, array_right_offset: NULL,
+# oexpr is output expr.
+#
+# The idea, is to construct nested GRASP_VARIANT_ARRAY_DROP_SIDES calls
+# And then flatten them afterwards, without creating extra clauses.
+*/
+
+
+
+
+
+
+
+
+/*
+# if right side is not var bound by asterisk
+# then we compute sql as is, no need to do anything special for pattern matching
+match_oexpr(
+    pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type:, match_id:, sql:, aggregated:,
 ) <-
-    # right side is a var that was not matched with array asterisk expression
+    # left expr is a var that was never bound with asterisk
     body_match(
         pipeline_id:, rule_id:, match_id:,
-        left_expr_id: expr_id, left_expr_type: expr_type,
-        right_expr_id:, right_expr_type:)
+        left_expr_id: pattern_expr_id, left_expr_type: pattern_expr_type,
+        right_expr_id:, right_expr_type: "var_expr")
+    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
+    not fact_oexpr_array_drop_sides(pipeline_id:, rule_id:, var_name:)
+    not match_oexpr_array_drop_sides(pipeline_id:, rule_id:, var_name:)
     substituted_expr(
         pipeline_id:, rule_id:, sql:, aggregated:,
-        expr_id: right_expr_id, expr_type: right_expr_type)
-    right_expr_type = "var_expr"
-    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
-    not fact_array_var_matched_with_asterisk(pipeline_id:, rule_id:, var_name:)
+        expr_id: right_expr_id, expr_type: "var_expr")
 */
-DECLARE RECURSIVE VIEW match_pattern_expr_access_sql (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, expr_type TEXT, match_id TEXT, sql TEXT, aggregated BOOLEAN, parent_array_sql TEXT, array_left_offset INTEGER, array_right_offset INTEGER);
-CREATE MATERIALIZED VIEW match_pattern_expr_access_sql AS
+DECLARE RECURSIVE VIEW match_oexpr (pipeline_id TEXT, rule_id TEXT, pattern_expr_id TEXT, pattern_expr_type TEXT, match_id TEXT, sql TEXT, aggregated BOOLEAN);
+DECLARE RECURSIVE VIEW match_oexpr_array_drop_sides (pipeline_id TEXT, rule_id TEXT, pattern_expr_id TEXT, pattern_expr_type TEXT, match_id TEXT, aggregated BOOLEAN, var_name TEXT, array_sql TEXT, left_offset INTEGER, right_offset INTEGER);
+CREATE MATERIALIZED VIEW match_oexpr AS
     SELECT DISTINCT
-        a.pipeline_id, a.rule_id,
-        a.left_expr_id AS expr_id, a.left_expr_type AS expr_type,
-        a.match_id,
-        b.sql, b.aggregated,
-        NULL AS parent_array_sql, NULL AS array_left_offset, NULL AS array_right_offset
-    FROM body_match AS a
-    JOIN substituted_expr AS b
-        ON a.pipeline_id = b.pipeline_id
-        AND a.rule_id = b.rule_id
-        AND a.right_expr_id = b.expr_id
-        AND a.right_expr_type = b.expr_type
-    JOIN var_expr AS c
-        ON a.pipeline_id = c.pipeline_id
-        AND a.rule_id = c.rule_id
-        AND a.right_expr_id = c.expr_id
-    WHERE a.right_expr_type = 'var_expr'
+        body_match.pipeline_id,
+        body_match.rule_id,
+        body_match.left_expr_id AS pattern_expr_id,
+        body_match.left_expr_type AS pattern_expr_type,
+        body_match.match_id,
+        substituted_expr.sql,
+        substituted_expr.aggregated
+    FROM body_match
+    JOIN var_expr
+        ON body_match.pipeline_id = var_expr.pipeline_id
+        AND body_match.rule_id = var_expr.rule_id
+        AND body_match.right_expr_id = var_expr.expr_id
+    JOIN substituted_expr
+        ON body_match.pipeline_id = substituted_expr.pipeline_id
+        AND body_match.rule_id = substituted_expr.rule_id
+        AND body_match.right_expr_id = substituted_expr.expr_id
+    WHERE body_match.right_expr_type = 'var_expr'
+    AND substituted_expr.expr_type = 'var_expr'
     AND NOT EXISTS (
         SELECT 1
-        FROM fact_array_var_matched_with_asterisk AS d
-        WHERE a.pipeline_id = d.pipeline_id
-        AND a.rule_id = d.rule_id
-        AND c.var_name = d.var_name
+        FROM fact_oexpr_array_drop_sides
+        WHERE body_match.pipeline_id = fact_oexpr_array_drop_sides.pipeline_id
+        AND body_match.rule_id = fact_oexpr_array_drop_sides.rule_id
+        AND var_expr.var_name = fact_oexpr_array_drop_sides.var_name
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM match_oexpr_array_drop_sides
+        WHERE body_match.pipeline_id = match_oexpr_array_drop_sides.pipeline_id
+        AND body_match.rule_id = match_oexpr_array_drop_sides.rule_id
+        AND var_expr.var_name = match_oexpr_array_drop_sides.var_name
     )
     UNION
 /*
-match_pattern_expr_access_sql(
-    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
-    parent_array_sql: NULL, array_left_offset: NULL, array_right_offset: NULL,
+# matching nested array pattern vars without asterisks in left side
+match_oexpr(
+    pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type:, match_id:, sql:, aggregated:,
 ) <-
-    # right side expr is not even a var, keep expression as is
-    body_match(
-        pipeline_id:, rule_id:, match_id:,
-        left_expr_id: expr_id, left_expr_type: expr_type,
-        right_expr_id:, right_expr_type:)
-    substituted_expr(
-        pipeline_id:, rule_id:, sql:, aggregated:,
-        expr_id: right_expr_id, expr_type: right_expr_type)
-    not var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id)
+    # left expr is not a var, but not an array as well
+    match_oexpr(
+        pipeline_id:, rule_id:, pattern_expr_id: array_expr_id, pattern_expr_type: "array_expr",
+        match_id:, sql: array_expr_sql, aggregated:)
+    array_expr(pipeline_id:, rule_id:, expr_id: array_expr_id, array_id:)
+    array_entry(
+        pipeline_id:, rule_id:, array_id:, index:,
+        expr_id: pattern_expr_id, expr_type: pattern_expr_type)
+    not var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, special_prefix: "*")
+    sql := `{{array_expr_sql}}[{{index}}]`
 */
     SELECT DISTINCT
-        a.pipeline_id, a.rule_id,
-        a.left_expr_id AS expr_id, a.left_expr_type AS expr_type,
-        a.match_id,
-        b.sql, b.aggregated,
-        NULL AS parent_array_sql, NULL AS array_left_offset, NULL AS array_right_offset
-    FROM body_match AS a
-    JOIN substituted_expr AS b
-        ON a.pipeline_id = b.pipeline_id
-        AND a.rule_id = b.rule_id
-        AND a.right_expr_id = b.expr_id
-        AND a.right_expr_type = b.expr_type
+        match_oexpr.pipeline_id,
+        match_oexpr.rule_id,
+        array_entry.expr_id AS pattern_expr_id,
+        array_entry.expr_type AS pattern_expr_type,
+        match_oexpr.match_id,
+        (match_oexpr.sql || '[' || array_entry."index" || ']') AS sql,
+        match_oexpr.aggregated
+    FROM match_oexpr
+    JOIN array_expr
+        ON match_oexpr.pipeline_id = array_expr.pipeline_id
+        AND match_oexpr.rule_id = array_expr.rule_id
+        AND match_oexpr.pattern_expr_id = array_expr.expr_id
+    JOIN array_entry
+        ON match_oexpr.pipeline_id = array_entry.pipeline_id
+        AND match_oexpr.rule_id = array_entry.rule_id
+        AND array_expr.array_id = array_entry.array_id
     WHERE NOT EXISTS (
         SELECT 1
-        FROM var_expr AS c
-        WHERE a.pipeline_id = c.pipeline_id
-        AND a.rule_id = c.rule_id
-        AND a.right_expr_id = c.expr_id
-    )
-    UNION
-/*
-match_pattern_expr_access_sql(
-    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
-    parent_array_sql:, array_left_offset:, array_right_offset:,
-) <-
-    # if left side expr is also a var, then just keep as it is
-    body_match(
-        pipeline_id:, rule_id:, match_id:,
-        left_expr_id: expr_id, left_expr_type: "var_expr",
-        right_expr_id:, right_expr_type: "var_expr")
-    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
-    fact_array_var_matched_with_asterisk(
-        pipeline_id:, rule_id:, var_name:,
-        parent_array_sql:, array_left_offset:, array_right_offset:)
-    var_expr(pipeline_id:, rule_id:, expr_id:)
-    substituted_expr(
-        pipeline_id:, rule_id:, sql:, aggregated:,
-        expr_id: right_expr_id, expr_type: "var_expr")
-*/
-    SELECT DISTINCT
-        a.pipeline_id, a.rule_id,
-        a.left_expr_id AS expr_id, 'var_expr' AS expr_type,
-        a.match_id,
-        e.sql, e.aggregated,
-        c.parent_array_sql, c.array_left_offset, c.array_right_offset
-    FROM body_match AS a
-    JOIN var_expr AS b
-        ON a.pipeline_id = b.pipeline_id
-        AND a.rule_id = b.rule_id
-        AND a.right_expr_id = b.expr_id
-    JOIN fact_array_var_matched_with_asterisk AS c
-        ON a.pipeline_id = c.pipeline_id
-        AND a.rule_id = c.rule_id
-        AND b.var_name = c.var_name
-    JOIN var_expr AS d
-        ON a.pipeline_id = d.pipeline_id
-        AND a.rule_id = d.rule_id
-        AND a.left_expr_id = d.expr_id
-    JOIN substituted_expr AS e
-        ON a.pipeline_id = e.pipeline_id
-        AND a.rule_id = e.rule_id
-        AND a.right_expr_id = e.expr_id
-    WHERE a.left_expr_type = 'var_expr'
-    AND a.right_expr_type = 'var_expr'
-    UNION
-
-/*
-match_pattern_expr_access_sql(
-    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
-    parent_array_sql:, array_left_offset:, array_right_offset:,
-) <-
-    # if left side is not a var and not an array, then just use computed sql
-    body_match(
-        pipeline_id:, rule_id:, match_id:,
-        left_expr_id: expr_id, left_expr_type: expr_type,
-        right_expr_id:, right_expr_type: "var_expr")
-    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
-    fact_array_var_matched_with_asterisk(
-        pipeline_id:, rule_id:, var_name:,
-        parent_array_sql:, array_left_offset:, array_right_offset:)
-    substituted_expr(
-        pipeline_id:, rule_id:, sql:, aggregated:,
-        expr_id: right_expr_id, expr_type: "var_expr")
-    expr_type != "var_expr"
-    expr_type != "array_expr"
-*/
-    SELECT DISTINCT
-        a.pipeline_id, a.rule_id,
-        a.left_expr_id AS expr_id, a.left_expr_type AS expr_type,
-        a.match_id,
-        d.sql, d.aggregated,
-        c.parent_array_sql, c.array_left_offset, c.array_right_offset
-    FROM body_match AS a
-    JOIN var_expr AS b
-        ON a.pipeline_id = b.pipeline_id
-        AND a.rule_id = b.rule_id
-        AND a.right_expr_id = b.expr_id
-    JOIN fact_array_var_matched_with_asterisk AS c
-        ON a.pipeline_id = c.pipeline_id
-        AND a.rule_id = c.rule_id
-        AND b.var_name = c.var_name
-    JOIN substituted_expr AS d
-        ON a.pipeline_id = d.pipeline_id
-        AND a.rule_id = d.rule_id
-        AND a.right_expr_id = d.expr_id
-    WHERE a.left_expr_type != 'var_expr'
-    AND a.left_expr_type != 'array_expr'
-    AND d.expr_type = 'var_expr'
-    UNION
-/*
-match_pattern_expr_access_sql(
-    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
-    parent_array_sql: NULL, array_left_offset: NULL, array_right_offset: NULL,
-) <-
-    # left side is array expression, element that is not asterisk var, return indexed expr
-    body_match(
-        pipeline_id:, rule_id:, match_id:,
-        left_expr_id:, left_expr_type: "array_expr",
-        right_expr_id:, right_expr_type: "var_expr")
-    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
-    fact_array_var_matched_with_asterisk(
-        pipeline_id:, rule_id:, var_name:,
-        parent_array_sql:, array_left_offset:, array_right_offset:)
-    array_expr(pipeline_id:, rule_id:, expr_id: left_expr_id, array_id:)
-    array_entry(
-        pipeline_id:, rule_id:, array_id:,
-        expr_id:, expr_type:, index:)
-
-    not var_expr(pipeline_id:, rule_id:, expr_id:, special_prefix: "*")
-    actual_index := index + array_left_offset - 1
-    sql := `{{parent_array_sql}}[{{actual_index}}]`
-*/
-    SELECT DISTINCT
-        a.pipeline_id, a.rule_id,
-        e.expr_id, e.expr_type,
-        a.match_id,
-        (c.parent_array_sql || '[' || (e."index" + c.array_left_offset - 1) || ']') AS sql, false AS aggregated,
-        NULL AS parent_array_sql, NULL AS array_left_offset, NULL AS array_right_offset
-    FROM body_match AS a
-    JOIN var_expr AS b
-        ON a.pipeline_id = b.pipeline_id
-        AND a.rule_id = b.rule_id
-        AND a.right_expr_id = b.expr_id
-    JOIN fact_array_var_matched_with_asterisk AS c
-        ON a.pipeline_id = c.pipeline_id
-        AND a.rule_id = c.rule_id
-        AND b.var_name = c.var_name
-    JOIN array_expr AS d
-        ON a.pipeline_id = d.pipeline_id
-        AND a.rule_id = d.rule_id
-        AND a.left_expr_id = d.expr_id
-    JOIN array_entry AS e
-        ON a.pipeline_id = e.pipeline_id
-        AND a.rule_id = e.rule_id
-        AND e.array_id = d.array_id
-    WHERE a.left_expr_type = 'array_expr'
-    AND a.right_expr_type = 'var_expr'
-    AND NOT EXISTS (
-        SELECT 1
         FROM var_expr
-        WHERE a.pipeline_id = var_expr.pipeline_id
-        AND a.rule_id = var_expr.rule_id
-        AND e.expr_id = var_expr.expr_id
+        WHERE match_oexpr.pipeline_id = var_expr.pipeline_id
+        AND match_oexpr.rule_id = var_expr.rule_id
+        AND array_entry.expr_id = var_expr.expr_id
         AND var_expr.special_prefix = '*'
     )
     UNION
 /*
-match_pattern_expr_access_sql(
-    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
-    parent_array_sql:, array_left_offset:, array_right_offset:,
+# matching nested dict pattern vars without asterisks in left side
+match_oexpr(
+    pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type:, match_id:, sql:, aggregated:,
 ) <-
-    # left side is array expression, element is asterisk var, compute offsets
-    body_match(
-        pipeline_id:, rule_id:, match_id:,
-        left_expr_id:, left_expr_type: "array_expr",
-        right_expr_id:, right_expr_type: "var_expr")
-    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
-    fact_array_var_matched_with_asterisk(
-        pipeline_id:, rule_id:, var_name:, sql:,
-        parent_array_sql:, array_left_offset: prev_array_left_offset, array_right_offset: prev_array_right_offset)
-    array_expr(pipeline_id:, rule_id:, expr_id: left_expr_id, array_id:)
-    asterisk_array_var_offsets(
-        pipeline_id:, rule_id:, array_id:, expr_id:,
-        array_left_offset: inner_left_offset, array_right_offset: inner_right_offset)
-
-    array_left_offset := prev_left_offset + inner_left_offset - 1
-    array_right_offset := prev_right_offset + inner_right_offset
-    sql := `GRASP_VARIANT_ARRAY_DROP_SIDES({{parent_array_sql}}, CAST({{array_left_offset}} AS INTEGER UNSIGNED), CAST({{array_right_offset}} AS INTEGER UNSIGNED))`
-*/
-    SELECT DISTINCT
-        a.pipeline_id, a.rule_id,
-        e.expr_id, 'var_expr' AS expr_type,
-        a.match_id,
-        ('GRASP_VARIANT_ARRAY_DROP_SIDES(' || c.parent_array_sql || ', CAST(' || e.array_left_offset || ' AS INTEGER UNSIGNED), CAST(' || e.array_right_offset || ' AS INTEGER UNSIGNED))') AS sql,
-        false AS aggregated,
-        c.parent_array_sql, e.array_left_offset, e.array_right_offset
-    FROM body_match AS a
-    JOIN var_expr AS b
-        ON a.pipeline_id = b.pipeline_id
-        AND a.rule_id = b.rule_id
-        AND a.right_expr_id = b.expr_id
-    JOIN fact_array_var_matched_with_asterisk AS c
-        ON a.pipeline_id = c.pipeline_id
-        AND a.rule_id = c.rule_id
-        AND b.var_name = c.var_name
-    JOIN array_expr AS d
-        ON a.pipeline_id = d.pipeline_id
-        AND a.rule_id = d.rule_id
-        AND a.left_expr_id = d.expr_id
-    JOIN asterisk_array_var_offsets AS e
-        ON a.pipeline_id = e.pipeline_id
-        AND a.rule_id = e.rule_id
-        AND d.array_id = e.array_id
-    WHERE a.left_expr_type = 'array_expr'
-    AND a.right_expr_type = 'var_expr'
-    UNION
-
-/*
-# now all cases of right side expressions are covered
-# now we just recursively compute access sql expressions for the left side
-match_pattern_expr_access_sql(
-    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
-    parent_array_sql: NULL, array_left_offset: NULL, array_right_offset: NULL,
-) <-
-    match_pattern_expr_access_sql(
-        pipeline_id:, rule_id:, expr_id: dict_expr_id, expr_type: "dict_expr",
-        match_id:, sql: parent_sql, aggregated:)
+    # left expr is not a var, but not a dict as well
+    match_oexpr(
+        pipeline_id:, rule_id:, pattern_expr_id: dict_expr_id, pattern_expr_type: "dict_expr",
+        match_id:, sql: dict_expr_sql, aggregated:)
     dict_expr(pipeline_id:, rule_id:, expr_id: dict_expr_id, dict_id:)
-    dict_entry(pipeline_id:, rule_id:, dict_id:, key:, expr_id:, expr_type:)
-    sql := `{{parent_sql}}['{{key}}']`
+    dict_entry(
+        pipeline_id:, rule_id:, dict_id:, key:,
+        expr_id: pattern_expr_id, expr_type: pattern_expr_type)
+    sql := `{{dict_expr_sql}}['{{key}}']`
 */
     SELECT DISTINCT
-        match_pattern_expr_access_sql.pipeline_id, match_pattern_expr_access_sql.rule_id,
-        b.expr_id, b.expr_type,
-        match_pattern_expr_access_sql.match_id,
-        (match_pattern_expr_access_sql.sql || '[' || '''' || b.key || '''' || ']') AS sql,
-        match_pattern_expr_access_sql.aggregated,
-        NULL AS parent_array_sql, NULL AS array_left_offset, NULL AS array_right_offset
-    FROM match_pattern_expr_access_sql
-    JOIN dict_expr AS a
-        ON match_pattern_expr_access_sql.pipeline_id = a.pipeline_id
-        AND match_pattern_expr_access_sql.rule_id = a.rule_id
-        AND match_pattern_expr_access_sql.expr_id = a.expr_id
-    JOIN dict_entry AS b
-        ON a.pipeline_id = b.pipeline_id
-        AND a.rule_id = b.rule_id
-        AND a.dict_id = b.dict_id
-    WHERE match_pattern_expr_access_sql.expr_type = 'dict_expr'
+        match_oexpr.pipeline_id,
+        match_oexpr.rule_id,
+        dict_entry.expr_id AS pattern_expr_id,
+        dict_entry.expr_type AS pattern_expr_type,
+        match_oexpr.match_id,
+        (match_oexpr.sql || '[' || '''' || dict_entry.key || '''' || ']') AS sql,
+        match_oexpr.aggregated
+    FROM match_oexpr
+    JOIN dict_expr
+        ON match_oexpr.pipeline_id = dict_expr.pipeline_id
+        AND match_oexpr.rule_id = dict_expr.rule_id
+        AND match_oexpr.pattern_expr_id = dict_expr.expr_id
+    JOIN dict_entry
+        ON match_oexpr.pipeline_id = dict_entry.pipeline_id
+        AND match_oexpr.rule_id = dict_entry.rule_id
+        AND dict_expr.dict_id = dict_entry.dict_id
+    WHERE match_oexpr.pattern_expr_type = 'dict_expr'
     UNION
 /*
-match_pattern_expr_access_sql(
-    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
-    parent_array_sql: NULL, array_left_offset: NULL, array_right_offset: NULL,
+# matching nested array pattern associated with asterisk expression,
+# shift indexes accordingly
+match_oexpr(
+    pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type:, match_id:, sql:, aggregated:,
 ) <-
-    match_pattern_expr_access_sql(
-        pipeline_id:, rule_id:, expr_id: array_expr_id, expr_type: "array_expr",
-        match_id:, sql: parent_sql, aggregated:)
+    match_oexpr_array_drop_sides(
+        pipeline_id:, rule_id:, pattern_expr_id: array_expr_id, pattern_expr_type: "array_expr",
+        match_id:, aggregated:,
+        array_sql:, left_offset:)
     array_expr(pipeline_id:, rule_id:, expr_id: array_expr_id, array_id:)
-    array_entry(pipeline_id:, rule_id:, array_id:, index:, expr_id:, expr_type:)
-    not var_expr(pipeline_id:, rule_id:, expr_id:, special_prefix: "*")
-    sql := `{{parent_sql}}[{{index}}]`
+    array_entry(
+        pipeline_id:, rule_id:, array_id:, index: inner_index,
+        expr_id: pattern_expr_id, expr_type: pattern_expr_type)
+    not var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, special_prefix: "*")
+    index := inner_index + left_offset
+    sql := `{{array_expr_sql}}[{{index}}]`
 */
     SELECT DISTINCT
-        match_pattern_expr_access_sql.pipeline_id, match_pattern_expr_access_sql.rule_id,
-        b.expr_id, b.expr_type,
-        match_pattern_expr_access_sql.match_id,
-        (match_pattern_expr_access_sql.sql || '[' || b."index" || ']') AS sql,
-        match_pattern_expr_access_sql.aggregated,
-        NULL AS parent_array_sql, NULL AS array_left_offset, NULL AS array_right_offset
-    FROM match_pattern_expr_access_sql
-    JOIN array_expr AS a
-        ON match_pattern_expr_access_sql.pipeline_id = a.pipeline_id
-        AND match_pattern_expr_access_sql.rule_id = a.rule_id
-        AND match_pattern_expr_access_sql.expr_id = a.expr_id
-    JOIN array_entry AS b
-        ON a.pipeline_id = b.pipeline_id
-        AND a.rule_id = b.rule_id
-        AND a.array_id = b.array_id
-    WHERE match_pattern_expr_access_sql.expr_type = 'array_expr'
-    AND NOT EXISTS (
+        match_oexpr_array_drop_sides.pipeline_id,
+        match_oexpr_array_drop_sides.rule_id,
+        array_entry.expr_id AS pattern_expr_id,
+        array_entry.expr_type AS pattern_expr_type,
+        match_oexpr_array_drop_sides.match_id,
+        (match_oexpr_array_drop_sides.array_sql || '[' || (array_entry."index" + match_oexpr_array_drop_sides.left_offset) || ']') AS sql,
+        match_oexpr_array_drop_sides.aggregated
+    FROM match_oexpr_array_drop_sides
+    JOIN array_expr
+        ON match_oexpr_array_drop_sides.pipeline_id = array_expr.pipeline_id
+        AND match_oexpr_array_drop_sides.rule_id = array_expr.rule_id
+        AND match_oexpr_array_drop_sides.pattern_expr_id = array_expr.expr_id
+    JOIN array_entry
+        ON match_oexpr_array_drop_sides.pipeline_id = array_entry.pipeline_id
+        AND match_oexpr_array_drop_sides.rule_id = array_entry.rule_id
+        AND array_expr.array_id = array_entry.array_id
+    WHERE NOT EXISTS (
         SELECT 1
         FROM var_expr
-        WHERE match_pattern_expr_access_sql.pipeline_id = var_expr.pipeline_id
-        AND match_pattern_expr_access_sql.rule_id = var_expr.rule_id
-        AND b.expr_id = var_expr.expr_id
+        WHERE match_oexpr_array_drop_sides.pipeline_id = var_expr.pipeline_id
+        AND match_oexpr_array_drop_sides.rule_id = var_expr.rule_id
+        AND array_entry.expr_id = var_expr.expr_id
         AND var_expr.special_prefix = '*'
     )
+    AND match_oexpr_array_drop_sides.pattern_expr_type = 'array_expr';
+
+
+
+
+/*
+# fact(a: [1, *right, 3])
+# left := right
+match_oexpr_array_drop_sides(
+    pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type: "var_expr",
+    match_id:, aggregated: false, var_name:,
+    array_sql:, left_offset:, right_offset:
+) <-
+    body_match(
+        pipeline_id:, rule_id:, match_id:,
+        left_expr_id: pattern_expr_id, left_expr_type: "var_expr",
+        right_expr_id:, right_expr_type: "var_expr")
+    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_type, var_name: right_var_name)
+    fact_oexpr_array_drop_sides(
+        pipeline_id:, rule_id:, var_name: right_var_name,
+        array_sql:, left_offset:, right_offset:)
+    var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, var_name:)
+*/
+CREATE MATERIALIZED VIEW match_oexpr_array_drop_sides AS
+    SELECT DISTINCT 
+        body_match.pipeline_id,
+        body_match.rule_id,
+        left_var_expr.expr_id AS pattern_expr_id,
+        'var_expr' AS pattern_expr_type,
+        body_match.match_id,
+        FALSE AS aggregated,
+        left_var_expr.var_name,
+        fact_oexpr_array_drop_sides.array_sql,
+        fact_oexpr_array_drop_sides.left_offset,
+        fact_oexpr_array_drop_sides.right_offset
+    FROM body_match
+    JOIN var_expr AS right_var_expr
+        ON body_match.pipeline_id = right_var_expr.pipeline_id
+        AND body_match.rule_id = right_var_expr.rule_id
+        AND body_match.right_expr_id = right_var_expr.expr_id
+    JOIN fact_oexpr_array_drop_sides
+        ON body_match.pipeline_id = fact_oexpr_array_drop_sides.pipeline_id
+        AND body_match.rule_id = fact_oexpr_array_drop_sides.rule_id
+        AND right_var_expr.var_name = fact_oexpr_array_drop_sides.var_name
+    JOIN var_expr AS left_var_expr
+        ON body_match.pipeline_id = left_var_expr.pipeline_id
+        AND body_match.rule_id = left_var_expr.rule_id
+        AND body_match.left_expr_id = left_var_expr.expr_id
+    WHERE body_match.left_expr_type = 'var_expr'
+    AND body_match.right_expr_type = 'var_expr'
     UNION
 /*
-match_pattern_expr_access_sql(
-    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
-    parent_array_sql:, array_left_offset:, array_right_offset:,
+# [1, *right, 3] := any_expr
+# left := right
+match_oexpr_array_drop_sides(
+    pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type: "var_expr",
+    match_id:, aggregated:, var_name:,
+    array_sql:, left_offset:, right_offset:
 ) <-
-    # previous value was also an asterisk expr
-    match_pattern_expr_access_sql(
-        pipeline_id:, rule_id:, expr_id: array_expr_id, expr_type: "array_expr",
-        match_id:, aggregated:,
-        parent_array_sql:,
-        array_left_offset: parent_left_offset,
-        array_right_offset: parent_right_offset)
-    array_expr(pipeline_id:, rule_id:, expr_id: array_expr_id, array_id:)
-    asterisk_array_var_offsets(
-        pipeline_id:, rule_id:, array_id:, expr_id:,
-        array_left_offset: inner_left_offset, array_right_offset: inner_right_offset)
-    array_left_offset := parent_left_offset + inner_left_offset - 1
-    array_right_offset := parent_right_offset + inner_right_offset
-    sql := `GRASP_VARIANT_ARRAY_DROP_SIDES({{parent_array_sql}}, CAST({{array_left_offset}} AS INTEGER UNSIGNED), CAST({{array_right_offset}} AS INTEGER UNSIGNED))`
+    body_match(
+        pipeline_id:, rule_id:, match_id:,
+        left_expr_id: pattern_expr_id, left_expr_type: "var_expr",
+        right_expr_id:, right_expr_type: "var_expr")
+    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_type, var_name: right_var_name)
+    match_oexpr_array_drop_sides(
+        pipeline_id:, rule_id:, var_name: right_var_name, aggregated:,
+        array_sql:, left_offset:, right_offset:)
+    var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, var_name:)
 */
     SELECT DISTINCT
-        match_pattern_expr_access_sql.pipeline_id, match_pattern_expr_access_sql.rule_id,
-        b.expr_id, 'var_expr' AS expr_type,
-        match_pattern_expr_access_sql.match_id,
-        ('GRASP_VARIANT_ARRAY_DROP_SIDES(' || match_pattern_expr_access_sql.parent_array_sql || ', CAST(' || (match_pattern_expr_access_sql.array_left_offset + b.array_left_offset - 1) || ' AS INTEGER UNSIGNED), CAST(' || (match_pattern_expr_access_sql.array_right_offset + b.array_right_offset) || ' AS INTEGER UNSIGNED))') AS sql,
-        match_pattern_expr_access_sql.aggregated,
-        match_pattern_expr_access_sql.parent_array_sql,
-        (match_pattern_expr_access_sql.array_left_offset + b.array_left_offset - 1) AS array_left_offset,
-        (match_pattern_expr_access_sql.array_right_offset + b.array_right_offset) AS array_right_offset
-    FROM match_pattern_expr_access_sql
-    JOIN array_expr AS a
-        ON match_pattern_expr_access_sql.pipeline_id = a.pipeline_id
-        AND match_pattern_expr_access_sql.rule_id = a.rule_id
-        AND match_pattern_expr_access_sql.expr_id = a.expr_id
-    JOIN asterisk_array_var_offsets AS b
-        ON a.pipeline_id = b.pipeline_id
-        AND a.rule_id = b.rule_id
-        AND a.array_id = b.array_id
-    WHERE match_pattern_expr_access_sql.expr_type = 'array_expr'
-    AND match_pattern_expr_access_sql.parent_array_sql IS NOT NULL
+        body_match.pipeline_id,
+        body_match.rule_id,
+        left_var_expr.expr_id AS pattern_expr_id,
+        'var_expr' AS pattern_expr_type,
+        match_oexpr_array_drop_sides.match_id,
+        match_oexpr_array_drop_sides.aggregated,
+        left_var_expr.var_name,
+        match_oexpr_array_drop_sides.array_sql,
+        match_oexpr_array_drop_sides.left_offset,
+        match_oexpr_array_drop_sides.right_offset
+    FROM body_match
+    JOIN var_expr AS right_var_expr
+        ON body_match.pipeline_id = right_var_expr.pipeline_id
+        AND body_match.rule_id = right_var_expr.rule_id
+        AND body_match.right_expr_id = right_var_expr.expr_id
+    JOIN match_oexpr_array_drop_sides
+        ON body_match.pipeline_id = match_oexpr_array_drop_sides.pipeline_id
+        AND body_match.rule_id = match_oexpr_array_drop_sides.rule_id
+        AND right_var_expr.var_name = match_oexpr_array_drop_sides.var_name
+    JOIN var_expr AS left_var_expr
+        ON body_match.pipeline_id = left_var_expr.pipeline_id
+        AND body_match.rule_id = left_var_expr.rule_id
+        AND body_match.left_expr_id = left_var_expr.expr_id
+    WHERE body_match.left_expr_type = 'var_expr'
+    AND body_match.right_expr_type = 'var_expr'
     UNION
 /*
-match_pattern_expr_access_sql(
-    pipeline_id:, rule_id:, expr_id:, expr_type:, match_id:, sql:, aggregated:,
-    parent_array_sql:, array_left_offset:, array_right_offset:,
+# fact(a: [1, *right, 3])
+# any_expr := right
+match_oexpr_array_drop_sides(
+    pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type:,
+    match_id:, aggregated: false, var_name: NULL,
+    array_sql:, left_offset:, right_offset:
 ) <-
-    match_pattern_expr_access_sql(
-        pipeline_id:, rule_id:, expr_id: array_expr_id, expr_type: "array_expr",
-        match_id:, aggregated:,
-        parent_array_sql: NULL)
-    array_expr(pipeline_id:, rule_id:, expr_id: array_expr_id, array_id:)
-    asterisk_array_var_offsets(
-        pipeline_id:, rule_id:, array_id:, expr_id:,
-        array_left_offset:, array_right_offset:)
-    substituted_expr(pipeline_id:, rule_id:, expr_id:, sql: parent_array_sql, aggregated:)
-    sql := `GRASP_VARIANT_ARRAY_DROP_SIDES({{parent_array_sql}}, CAST({{array_left_offset}} AS INTEGER UNSIGNED), CAST({{array_right_offset}} AS INTEGER UNSIGNED))`
+    body_match(
+        pipeline_id:, rule_id:, match_id:,
+        left_expr_id: pattern_expr_id, left_expr_type: pattern_expr_type,
+        right_expr_id:, right_expr_type: "var_expr")
+    var_expr(pipeline_id:, rule_id:, expr_id: right_expr_id, var_name:)
+    fact_oexpr_array_drop_sides(
+        pipeline_id:, rule_id:, var_name:,
+        array_sql:, left_offset:, right_offset:)
+    pattern_expr_type != "var_expr"
 */
     SELECT DISTINCT
-        match_pattern_expr_access_sql.pipeline_id, match_pattern_expr_access_sql.rule_id,
-        b.expr_id, 'var_expr' AS expr_type,
-        match_pattern_expr_access_sql.match_id,
-        ('GRASP_VARIANT_ARRAY_DROP_SIDES(' || substituted_expr.sql || ', CAST(' || b.array_left_offset || ' AS INTEGER UNSIGNED), CAST(' || b.array_right_offset || ' AS INTEGER UNSIGNED))') AS sql,
-        substituted_expr.aggregated,
-        substituted_expr.sql,
-        b.array_left_offset, b.array_right_offset
-    FROM match_pattern_expr_access_sql
-    JOIN array_expr AS a
-        ON match_pattern_expr_access_sql.pipeline_id = a.pipeline_id
-        AND match_pattern_expr_access_sql.rule_id = a.rule_id
-        AND match_pattern_expr_access_sql.expr_id = a.expr_id
-    JOIN asterisk_array_var_offsets AS b
-        ON a.pipeline_id = b.pipeline_id
-        AND a.rule_id = b.rule_id
-        AND a.array_id = b.array_id
-    JOIN substituted_expr
-        ON match_pattern_expr_access_sql.pipeline_id = substituted_expr.pipeline_id
-        AND match_pattern_expr_access_sql.rule_id = substituted_expr.rule_id
-        AND b.expr_id = substituted_expr.expr_id
-    WHERE match_pattern_expr_access_sql.expr_type = 'array_expr'
-    AND match_pattern_expr_access_sql.parent_array_sql IS NULL;
-
-
-
+        body_match.pipeline_id,
+        body_match.rule_id,
+        body_match.left_expr_id AS pattern_expr_id,
+        body_match.left_expr_type AS pattern_expr_type,
+        body_match.match_id,
+        FALSE AS aggregated,
+        NULL AS var_name,
+        fact_oexpr_array_drop_sides.array_sql,
+        fact_oexpr_array_drop_sides.left_offset,
+        fact_oexpr_array_drop_sides.right_offset
+    FROM body_match
+    JOIN var_expr
+        ON body_match.pipeline_id = var_expr.pipeline_id
+        AND body_match.rule_id = var_expr.rule_id
+        AND body_match.right_expr_id = var_expr.expr_id
+    JOIN fact_oexpr_array_drop_sides
+        ON body_match.pipeline_id = fact_oexpr_array_drop_sides.pipeline_id
+        AND body_match.rule_id = fact_oexpr_array_drop_sides.rule_id
+        AND var_expr.var_name = fact_oexpr_array_drop_sides.var_name
+    WHERE body_match.left_expr_type != 'var_expr'
+    AND body_match.right_expr_type = 'var_expr'
+    UNION
+/*
+# matching nested asterisk array pattern vars in left side
+match_oexpr_array_drop_sides(
+    pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type: "var_expr",
+    match_id:, aggregated:, var_name:,
+    array_sql:, left_offset:, right_offset:
+) <-
+    match_oexpr_array_drop_sides(
+        pipeline_id:, rule_id:, pattern_expr_id: parent_pattern_expr_id, pattern_expr_type: "array_expr",
+        match_id:, aggregated:,
+        array_sql:, left_offset: parent_left_offset, right_offset: parent_left_offset)
+    array_expr(pipeline_id:, rule_id:, expr_id: parent_pattern_expr_id, array_id:)
+    asterisk_array_var_offsets(
+        pipeline_id:, rule_id:, array_id:, var_name:,
+        expr_id: pattern_expr_id, left_offset: innert_left_offset, right_offset: innert_right_offset)
+    left_offset := parent_left_offset + innert_left_offset
+    right_offset := parent_left_offset + innert_right_offset
+*/
+    SELECT DISTINCT
+        match_oexpr_array_drop_sides.pipeline_id,
+        match_oexpr_array_drop_sides.rule_id,
+        asterisk_array_var_offsets.expr_id AS pattern_expr_id,
+        'var_expr' AS pattern_expr_type,
+        match_oexpr_array_drop_sides.match_id,
+        match_oexpr_array_drop_sides.aggregated,
+        asterisk_array_var_offsets.var_name,
+        match_oexpr_array_drop_sides.array_sql,
+        (match_oexpr_array_drop_sides.left_offset + asterisk_array_var_offsets.left_offset) AS left_offset,
+        (match_oexpr_array_drop_sides.left_offset + asterisk_array_var_offsets.right_offset) AS right_offset
+    FROM match_oexpr_array_drop_sides
+    JOIN array_expr
+        ON match_oexpr_array_drop_sides.pipeline_id = array_expr.pipeline_id
+        AND match_oexpr_array_drop_sides.rule_id = array_expr.rule_id
+        AND match_oexpr_array_drop_sides.pattern_expr_id = array_expr.expr_id
+    JOIN asterisk_array_var_offsets
+        ON match_oexpr_array_drop_sides.pipeline_id = asterisk_array_var_offsets.pipeline_id
+        AND match_oexpr_array_drop_sides.rule_id = asterisk_array_var_offsets.rule_id
+        AND array_expr.array_id = asterisk_array_var_offsets.array_id
+    WHERE match_oexpr_array_drop_sides.pattern_expr_type = 'array_expr'
+    UNION
+/*
+# matching nested asterisk array pattern vars in left side, with non-asterisk expression
+match_oexpr_array_drop_sides(
+    pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type: "var_expr",
+    match_id:, aggregated:, var_name:,
+    array_sql:, left_offset:, right_offset:
+) <-
+    match_oexpr(
+        pipeline_id:, rule_id:,
+        pattern_expr_id: parent_pattern_expr_id, pattern_expr_type: "array_expr",
+        match_id:, sql: array_sql, aggregated:)
+    array_expr(pipeline_id:, rule_id:, expr_id: parent_pattern_expr_id, array_id:)
+    asterisk_array_var_offsets(
+        pipeline_id:, rule_id:, array_id:, var_name:,
+        expr_id: pattern_expr_id, left_offset:, right_offset:)
+*/
+    SELECT DISTINCT
+        match_oexpr.pipeline_id,
+        match_oexpr.rule_id,
+        asterisk_array_var_offsets.expr_id AS pattern_expr_id,
+        'var_expr' AS pattern_expr_type,
+        match_oexpr.match_id,
+        match_oexpr.aggregated,
+        asterisk_array_var_offsets.var_name,
+        match_oexpr.sql AS array_sql,
+        asterisk_array_var_offsets.left_offset,
+        asterisk_array_var_offsets.right_offset
+    FROM match_oexpr
+    JOIN array_expr
+        ON match_oexpr.pipeline_id = array_expr.pipeline_id
+        AND match_oexpr.rule_id = array_expr.rule_id
+        AND match_oexpr.pattern_expr_id = array_expr.expr_id
+    JOIN asterisk_array_var_offsets
+        ON match_oexpr.pipeline_id = asterisk_array_var_offsets.pipeline_id
+        AND match_oexpr.rule_id = asterisk_array_var_offsets.rule_id
+        AND array_expr.array_id = asterisk_array_var_offsets.array_id
+    WHERE match_oexpr.pattern_expr_type = 'array_expr';
 
 
 
 /*
 var_bound_via_match(pipeline_id:, rule_id:, match_id:, var_name:, sql:, aggregated:) <-
-    match_pattern_expr_access_sql(
-        pipeline_id:, rule_id:, expr_type: "var_expr", match_id:, sql:, aggregated:)
-    var_expr(pipeline_id:, rule_id:, expr_id:, var_name:)
+    match_oexpr(
+        pipeline_id:, rule_id:,
+        pattern_expr_id:, pattern_expr_type: "var_expr",
+        match_id:, sql:, aggregated:)
+    var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, var_name:)
+var_bound_via_match(pipeline_id:, rule_id:, match_id:, var_name:, sql:, aggregated:) <-
+    match_oexpr_array_drop_sides(
+        pipeline_id:, rule_id:, pattern_expr_type: "var_expr",
+        match_id:, aggregated:, var_name:,
+        array_sql:, left_offset:, right_offset:)
+    sql := `GRASP_VARIANT_ARRAY_DROP_SIDES({{array_sql}}, CAST({{left_offset}} AS INTEGER UNSIGNED), CAST({{right_offset}} AS INTEGER UNSIGNED))`
 */
 CREATE MATERIALIZED VIEW var_bound_via_match AS
     SELECT DISTINCT
-        match_pattern_expr_access_sql.pipeline_id,
-        match_pattern_expr_access_sql.rule_id,
-        match_pattern_expr_access_sql.match_id,
+        match_oexpr.pipeline_id,
+        match_oexpr.rule_id,
+        match_oexpr.match_id,
         var_expr.var_name,
-        match_pattern_expr_access_sql.sql,
-        match_pattern_expr_access_sql.aggregated
-    FROM match_pattern_expr_access_sql
+        match_oexpr.sql,
+        match_oexpr.aggregated
+    FROM match_oexpr
     JOIN var_expr
-        ON match_pattern_expr_access_sql.pipeline_id = var_expr.pipeline_id
-        AND match_pattern_expr_access_sql.rule_id = var_expr.rule_id
-        AND match_pattern_expr_access_sql.expr_id = var_expr.expr_id
-    WHERE match_pattern_expr_access_sql.expr_type = 'var_expr';
+        ON match_oexpr.pipeline_id = var_expr.pipeline_id
+        AND match_oexpr.rule_id = var_expr.rule_id
+        AND match_oexpr.pattern_expr_id = var_expr.expr_id
+    WHERE match_oexpr.pattern_expr_type = 'var_expr'
+
+    UNION
+
+    SELECT DISTINCT
+        match_oexpr_array_drop_sides.pipeline_id,
+        match_oexpr_array_drop_sides.rule_id,
+        match_oexpr_array_drop_sides.match_id,
+        match_oexpr_array_drop_sides.var_name,
+        ('GRASP_VARIANT_ARRAY_DROP_SIDES(' || match_oexpr_array_drop_sides.array_sql || ', CAST(' || match_oexpr_array_drop_sides.left_offset || ' AS INTEGER UNSIGNED), CAST(' || match_oexpr_array_drop_sides.right_offset || ' AS INTEGER UNSIGNED))') AS sql,
+        match_oexpr_array_drop_sides.aggregated
+    FROM match_oexpr_array_drop_sides;
+
+
 
 /*
 sql_where_cond(pipeline_id:, rule_id:, cond_id:, sql:) <-

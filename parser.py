@@ -379,7 +379,7 @@ def records_from_expr(expr, rule_id, expr_id, idgen):
             ])
         case Tree(data=Token(type='RULE', value='array_expr'), children=array_elements):
             array_id = f'ar{next(idgen)}'
-            elements_records = [records_from_array_element(e, i, rule_id, array_id, idgen) for (i, e) in enumerate(array_elements)]
+            elements_records = [records_from_array_element(e, i+1, rule_id, array_id, idgen) for (i, e) in enumerate(array_elements)]
             return 'array_expr', functools.reduce(merge_records, [
                 *elements_records,
                 { 'array_expr': [{
@@ -582,7 +582,7 @@ def records_from_rule_decl(rule_decl, original_source_path, table_name, rule_par
     rule_id = f'ru{next(idgen)}'
     param_records = [records_from_rule_param(rp, rule_id, idgen) for rp in rule_params]
     # print(f"params_recorsd {param_records}")
-    body_stmts_records = [records_from_body_stmt(i, bs, rule_id, idgen) for (i, bs) in enumerate(body_stmts)]
+    body_stmts_records = [records_from_body_stmt(i+1, bs, rule_id, idgen) for (i, bs) in enumerate(body_stmts)]
     return functools.reduce(merge_records, [
         *param_records,
         *body_stmts_records,
