@@ -1721,22 +1721,52 @@ CREATE MATERIALIZED VIEW table_view_sql AS
     ;
 
 /*
+output_column_type(input_type: "JSON", output_type: "VARIANT")
+output_column_type(input_type:, output_type:) <-
+    schema_table_column(column_type: input_type)
+    input_type != "JSON"
+    output_type := input_type
+output_column_type(input_type:, output_type:) <-
+    var_expr(assigned_type: input_type)
+    input_type != "JSON"
+    output_type := input_type
+*/
+CREATE MATERIALIZED VIEW output_column_type AS
+    SELECT 'JSON' AS input_type, 'VARIANT' AS output_type
+    UNION
+    SELECT DISTINCT
+        schema_table_column.column_type AS input_type,
+        schema_table_column.column_type AS output_type
+    FROM schema_table_column
+    WHERE schema_table_column.column_type != 'JSON'
+    UNION
+    SELECT DISTINCT
+        var_expr.assigned_type AS input_type,
+        var_expr.assigned_type AS output_type
+    FROM var_expr
+    WHERE var_expr.assigned_type != 'JSON';
+
+/*
 schema_table_column_sql(pipeline_id:, table_name:, column_name:, sql:) <-
     schema_table_column(
         pipeline_id:, table_name:, column_name:, column_type:, nullable: true)
-    sql := `{{column_name}} {{column_type}}`
+    output_column_type(input_type: column_type, output_type:)
+    sql := `{{column_name}} {{output_type}}`
 schema_table_column_sql(pipeline_id:, table_name:, column_name:, sql:) <-
     schema_table_column(
         pipeline_id:, table_name:, column_name:, column_type:, nullable: false)
-    sql := `{{column_name}} {{column_type}} NOT NULL`
+    output_column_type(input_type: column_type, output_type:)
+    sql := `{{column_name}} {{output_type}} NOT NULL`
 */
 CREATE MATERIALIZED VIEW schema_table_column_sql AS
     SELECT DISTINCT
         schema_table_column.pipeline_id,
         schema_table_column.table_name,
         schema_table_column.column_name,
-        (schema_table_column.column_name || ' ' || schema_table_column.column_type) AS sql
+        (schema_table_column.column_name || ' ' || output_column_type.output_type) AS sql
     FROM schema_table_column
+    JOIN output_column_type
+        ON schema_table_column.column_type = output_column_type.input_type
     WHERE schema_table_column.nullable
 
     UNION
@@ -1745,8 +1775,10 @@ CREATE MATERIALIZED VIEW schema_table_column_sql AS
         schema_table_column.pipeline_id,
         schema_table_column.table_name,
         schema_table_column.column_name,
-        (schema_table_column.column_name || ' ' || schema_table_column.column_type || ' NOT NULL') AS sql
+        (schema_table_column.column_name || ' ' || output_column_type.output_type || ' NOT NULL') AS sql
     FROM schema_table_column
+    JOIN output_column_type
+        ON schema_table_column.column_type = output_column_type.input_type
     WHERE NOT schema_table_column.nullable;
 
 /*

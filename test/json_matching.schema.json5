@@ -2,7 +2,7 @@
     tables: {
         tg_update: {
             columns: {
-                tg_update: {type: "VARIANT"},
+                tg_update: {type: "JSON"},
                 tg_bot_username: {type: "TEXT"},
                 collected_at: {type: "TIMESTAMP"},
             }
