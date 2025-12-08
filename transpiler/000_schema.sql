@@ -140,6 +140,7 @@ CREATE TABLE var_expr (
     -- for example "*", "**" or NULL
     -- used in pattern matching
     special_prefix TEXT,
+    assigned_type TEXT,
 
     start_line INTEGER NOT NULL,
     start_column INTEGER NOT NULL,

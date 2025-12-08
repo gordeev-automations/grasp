@@ -1,4 +1,7 @@
 
+/*
+# This file is included as a preface to every transpiled code.
+*/
 
 CREATE FUNCTION GRASP_TEXT_ARRAY_DROP_LEFT(array TEXT ARRAY, num INTEGER UNSIGNED) RETURNS TEXT ARRAY;
 

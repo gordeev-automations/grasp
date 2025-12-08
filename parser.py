@@ -186,10 +186,17 @@ def records_from_dict_arg(arg, rule_id, dict_id, idgen):
             }
         case Tree(data=Token(type='RULE', value='kv_arg'), children=[
             Token(type='IDENTIFIER', value=key),
-            Tree(data=Token(type='RULE', value='expr'), children=[expr]),
+            Tree(data=Token(type='RULE', value='expr'), children=children),
         ]):
             expr_id = f'ex{next(idgen)}'
-            expr_type, expr_records = records_from_expr(expr, rule_id, expr_id, idgen)
+            match children:
+                case [expr]:
+                    expr_type, expr_records = records_from_expr(expr, rule_id, expr_id, idgen)
+                case [expr, Token(type='TYPE', value=assigned_type)]:
+                    expr_type, expr_records = records_from_expr(
+                        expr, rule_id, expr_id, idgen, assigned_type=assigned_type)
+                case _:
+                    raise Exception(f"Invalid arg expr {arg}")
             return merge_records(
                 expr_records,
                 {
@@ -268,7 +275,7 @@ def records_from_array_element(element, index, rule_id, array_id, idgen):
 
 
 
-def records_from_expr(expr, rule_id, expr_id, idgen):
+def records_from_expr(expr, rule_id, expr_id, idgen, assigned_type=None):
     match expr:
         case Token(type='NUMBER', value=value):
             return 'int_expr', {
@@ -301,6 +308,7 @@ def records_from_expr(expr, rule_id, expr_id, idgen):
                     'rule_id': rule_id,
                     'expr_id': expr_id,
                     'var_name': value,
+                    'assigned_type': assigned_type,
 
                     'start_line': expr.line,
                     'start_column': expr.column,
