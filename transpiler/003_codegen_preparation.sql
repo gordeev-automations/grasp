@@ -53,19 +53,19 @@ CREATE MATERIALIZED VIEW table_dependency AS
 
 /*
 table_without_dependencies(pipeline_id:, table_name:) <-
-    rule(pipeline_id:, table_name:, rule_id:)
-    not body_fact(pipeline_id:, rule_id:)
+    table_dependency(pipeline_id:, parent_table_name: table_name)
+    not table_dependency(pipeline_id:, rule_id:, table_name:)
 */
 CREATE MATERIALIZED VIEW table_without_dependencies AS
     SELECT DISTINCT
-        rule.pipeline_id,
-        rule.table_name
-    FROM rule
+        table_dependency.pipeline_id,
+        table_dependency.parent_table_name AS table_name
+    FROM table_dependency
     WHERE NOT EXISTS (
         SELECT 1
-        FROM body_fact
-        WHERE rule.pipeline_id = body_fact.pipeline_id
-        AND rule.rule_id = body_fact.rule_id
+        FROM table_dependency AS t
+        WHERE t.pipeline_id = table_dependency.pipeline_id
+        AND t.table_name = table_dependency.parent_table_name
     );
 
 /*
@@ -962,7 +962,7 @@ CREATE MATERIALIZED VIEW fact_oexpr AS
         fact_oexpr.rule_id,
         dict_entry.expr_id AS pattern_expr_id,
         dict_entry.expr_type AS pattern_expr_type,
-        (fact_oexpr.sql || '["' || dict_entry.key || '"]') AS sql,
+        (fact_oexpr.sql || '[' || '''' || dict_entry.key || '''' || ']') AS sql,
         fact_oexpr.negated,
         fact_oexpr.fact_index,
         fact_oexpr.fact_id
