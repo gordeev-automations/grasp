@@ -1,4 +1,5 @@
 import os
+import glob
 import hashlib
 import asyncio
 
@@ -133,6 +134,7 @@ async def insert_records(session, pipeline_name, records):
         url = f'/v0/pipelines/{pipeline_name}/ingress/{table_name}'
         params = {'update_format': 'raw', 'array': 'true', 'format': 'json'}
 
+        # print(f"Inserting {table_name} records: {rows}")
         async with session.post(url, params=params, json=rows) as resp:
             if resp.status not in [200, 201]:
                 body = await resp.text()
@@ -142,6 +144,20 @@ async def insert_records(session, pipeline_name, records):
             print(f"Inserted {len(rows)} records into {table_name}: {json_resp}")
 
     return insert_tokens
+
+async def wait_till_input_tokens_processed(session, pipeline_name, tokens):
+    tokens = set(tokens)
+    while tokens:
+        for token in [*tokens]:
+            status = await fetch_ingest_status(session, pipeline_name, token)
+            match status:
+                case {'status': 'inprogress'}:
+                    pass
+                case {'status': 'complete'}:
+                    tokens.remove(token)
+                case _:
+                    raise Exception(f"Unknown ingest status: {status}")
+        await asyncio.sleep(1)
 
 async def fetch_ingest_status(session, pipeline_name, token):
     url = f'/v0/pipelines/{pipeline_name}/completion_status'
@@ -180,6 +196,17 @@ def testcase_dest_path(testcase_path, cache_dir):
 def testcase_expected_records_path(testcase_path):
     dirpath = os.path.dirname(testcase_path)
     return f'{dirpath}/{testcase_key(testcase_path)}.expected.json5'
+
+def testcase_table_inputs_paths(testcase_path):
+    dirpath = os.path.dirname(testcase_path)
+    key = testcase_key(testcase_path)
+    paths = glob.glob(f'{dirpath}/{key}.*.input.jsonl')
+    result = {}
+    for p in paths:
+        filename = os.path.basename(p)
+        table_name = filename.split('.')[1]
+        result[table_name] = p
+    return result
 
 def need_to_transpile_testcase(testcase_path, cache_dir):
     return not os.path.exists(testcase_dest_path(testcase_path, cache_dir))

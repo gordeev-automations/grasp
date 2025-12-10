@@ -19,16 +19,11 @@ CREATE MATERIALIZED VIEW array_expr_last_index AS
     GROUP BY array_expr.pipeline_id, array_expr.rule_id, array_expr.expr_id;
 
 /*
-table_dependency(pipeline_id:, table_name:, parent_table_name:) <-
+table_dependency1(pipeline_id:, table_name:, parent_table_name:) <-
     rule(pipeline_id:, table_name:, rule_id:)
     body_fact(pipeline_id:, rule_id:, table_name: parent_table_name)
-    #all_records_inserted(pipeline_id:)
-table_dependency(pipeline_id:, table_name:, parent_table_name:) <-
-    table_dependency(pipeline_id:, table_name:, parent_table_name:)
-    table_dependency(pipeline_id:, table_name: parent_table_name, parent_table_name:)
 */
-DECLARE RECURSIVE VIEW table_dependency (pipeline_id TEXT, table_name TEXT, parent_table_name TEXT);
-CREATE MATERIALIZED VIEW table_dependency AS
+CREATE MATERIALIZED VIEW table_dependency1 AS
     SELECT DISTINCT
         rule.pipeline_id,
         rule.table_name,
@@ -36,9 +31,22 @@ CREATE MATERIALIZED VIEW table_dependency AS
     FROM rule
     JOIN body_fact
         ON rule.pipeline_id = body_fact.pipeline_id
-        AND rule.rule_id = body_fact.rule_id
-    -- JOIN all_records_inserted
-    --     ON rule.pipeline_id = all_records_inserted.pipeline_id
+        AND rule.rule_id = body_fact.rule_id;
+
+/*
+table_dependency(pipeline_id:, table_name:, parent_table_name:) <-
+    table_dependency1(pipeline_id:, table_name:, parent_table_name:)
+table_dependency(pipeline_id:, table_name:, parent_table_name:) <-
+    table_dependency(pipeline_id:, table_name:, parent_table_name:)
+    table_dependency(pipeline_id:, table_name: parent_table_name, parent_table_name:)
+*/
+DECLARE RECURSIVE VIEW table_dependency (pipeline_id TEXT, table_name TEXT, parent_table_name TEXT);
+CREATE MATERIALIZED VIEW table_dependency AS
+    SELECT DISTINCT
+        table_dependency1.pipeline_id,
+        table_dependency1.table_name,
+        table_dependency1.parent_table_name
+    FROM table_dependency1
 
     UNION
 
@@ -50,6 +58,36 @@ CREATE MATERIALIZED VIEW table_dependency AS
     JOIN table_dependency AS t2
         ON t1.pipeline_id = t2.parent_table_name
         AND t1.parent_table_name = t2.table_name;
+
+/*
+table_dependency(pipeline_id:, table_name:, parent_table_name:) <-
+    rule(pipeline_id:, table_name:, rule_id:)
+    body_fact(pipeline_id:, rule_id:, table_name: parent_table_name)
+table_dependency(pipeline_id:, table_name:, parent_table_name:) <-
+    table_dependency(pipeline_id:, table_name:, parent_table_name:)
+    table_dependency(pipeline_id:, table_name: parent_table_name, parent_table_name:)
+*/
+-- DECLARE RECURSIVE VIEW table_dependency (pipeline_id TEXT, table_name TEXT, parent_table_name TEXT);
+-- CREATE MATERIALIZED VIEW table_dependency AS
+--     SELECT DISTINCT
+--         rule.pipeline_id,
+--         rule.table_name,
+--         body_fact.table_name AS parent_table_name
+--     FROM rule
+--     JOIN body_fact
+--         ON rule.pipeline_id = body_fact.pipeline_id
+--         AND rule.rule_id = body_fact.rule_id
+
+--     UNION
+
+--     SELECT DISTINCT
+--         t1.pipeline_id,
+--         t1.table_name,
+--         t2.parent_table_name
+--     FROM table_dependency AS t1
+--     JOIN table_dependency AS t2
+--         ON t1.pipeline_id = t2.parent_table_name
+--         AND t1.parent_table_name = t2.table_name;
 
 /*
 table_without_dependencies(pipeline_id:, table_name:) <-
@@ -1032,7 +1070,7 @@ var_bound_in_fact(
         array_sql:, left_offset:, right_offset:)
     var_expr(pipeline_id:, rule_id:, expr_id: var_pattern_expr_id, var_name:)
     false = (var_name ~ "^_.*$")
-    sql := `GRASP_VARIANT_ARRAY_DROP_SIDES({{array_sql}}, CAST({{left_offset}} AS INTEGER UNSIGNED), CAST({{right_offset}} AS INTEGER UNSIGNED))`
+    sql := `GRASP_VARIANT_ARRAY_DROP_SIDES(CAST({{array_sql}} AS VARIANT ARRAY), CAST({{left_offset}} AS INTEGER UNSIGNED), CAST({{right_offset}} AS INTEGER UNSIGNED))`
 */
 CREATE MATERIALIZED VIEW var_bound_in_fact AS
     SELECT DISTINCT
@@ -1060,7 +1098,7 @@ CREATE MATERIALIZED VIEW var_bound_in_fact AS
         var_expr.var_name,
         fact_oexpr_array_drop_sides.fact_index,
         fact_oexpr_array_drop_sides.fact_id,
-        ('GRASP_VARIANT_ARRAY_DROP_SIDES(' || fact_oexpr_array_drop_sides.array_sql || ', CAST(' || fact_oexpr_array_drop_sides.left_offset || ' AS INTEGER UNSIGNED), CAST(' || fact_oexpr_array_drop_sides.right_offset || ' AS INTEGER UNSIGNED))') AS sql
+        ('GRASP_VARIANT_ARRAY_DROP_SIDES(CAST(' || fact_oexpr_array_drop_sides.array_sql || ' AS VARIANT ARRAY), CAST(' || fact_oexpr_array_drop_sides.left_offset || ' AS INTEGER UNSIGNED), CAST(' || fact_oexpr_array_drop_sides.right_offset || ' AS INTEGER UNSIGNED))') AS sql
     FROM fact_oexpr_array_drop_sides
     JOIN var_expr
         ON fact_oexpr_array_drop_sides.pipeline_id = var_expr.pipeline_id

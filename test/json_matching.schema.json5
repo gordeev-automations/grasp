@@ -5,7 +5,8 @@
                 tg_update: {type: "JSON"},
                 tg_bot_username: {type: "TEXT"},
                 collected_at: {type: "TIMESTAMP"},
-            }
+            },
+            materialized: true,
         }
     }
 }

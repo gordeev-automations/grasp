@@ -873,7 +873,7 @@ var_bound_via_match(pipeline_id:, rule_id:, match_id:, var_name:, sql:, aggregat
         match_id:, aggregated:,
         array_sql:, left_offset:, right_offset:)
     var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, var_name:)
-    sql := `GRASP_VARIANT_ARRAY_DROP_SIDES({{array_sql}}, CAST({{left_offset}} AS INTEGER UNSIGNED), CAST({{right_offset}} AS INTEGER UNSIGNED))`
+    sql := `GRASP_VARIANT_ARRAY_DROP_SIDES(CAST({{array_sql}} AS VARIANT ARRAY), CAST({{left_offset}} AS INTEGER UNSIGNED), CAST({{right_offset}} AS INTEGER UNSIGNED))`
 */
 CREATE MATERIALIZED VIEW var_bound_via_match AS
     SELECT DISTINCT
@@ -897,7 +897,7 @@ CREATE MATERIALIZED VIEW var_bound_via_match AS
         match_oexpr_array_drop_sides.rule_id,
         match_oexpr_array_drop_sides.match_id,
         var_expr.var_name,
-        ('GRASP_VARIANT_ARRAY_DROP_SIDES(' || match_oexpr_array_drop_sides.array_sql || ', CAST(' || match_oexpr_array_drop_sides.left_offset || ' AS INTEGER UNSIGNED), CAST(' || match_oexpr_array_drop_sides.right_offset || ' AS INTEGER UNSIGNED))') AS sql,
+        ('GRASP_VARIANT_ARRAY_DROP_SIDES(CAST(' || match_oexpr_array_drop_sides.array_sql || 'AS VARIANT ARRAY), CAST(' || match_oexpr_array_drop_sides.left_offset || ' AS INTEGER UNSIGNED), CAST(' || match_oexpr_array_drop_sides.right_offset || ' AS INTEGER UNSIGNED))') AS sql,
         match_oexpr_array_drop_sides.aggregated
     FROM match_oexpr_array_drop_sides
     JOIN var_expr
@@ -926,6 +926,18 @@ CREATE MATERIALIZED VIEW sql_where_cond AS
         AND body_sql_cond.sql_expr_id = substituted_sql_expr.expr_id;
 
 /*
+output_json_type_cast_to(expr_type: "int_expr", output_type: "DECIMAL")
+output_json_type_cast_to(expr_type: "str_expr", output_type: "TEXT")
+output_json_type_cast_to(expr_type: "bool_expr", output_type: "BOOLEAN")
+*/
+CREATE MATERIALIZED VIEW output_json_type_cast_to AS
+    SELECT 'int_expr' AS expr_type, 'DECIMAL' AS output_type
+    UNION
+    SELECT 'str_expr' AS expr_type, 'TEXT' AS output_type
+    UNION
+    SELECT 'bool_expr' AS expr_type, 'BOOLEAN' AS output_type;
+
+/*
 # just variable referenced, make sure it is not null
 fact_where_cond(pipeline_id:, rule_id:, fact_id:, sql:) <-
     fact_oexpr(
@@ -942,7 +954,8 @@ fact_where_cond(pipeline_id:, rule_id:, fact_id:, sql:) <-
     substituted_expr(
         pipeline_id:, rule_id:, expr_id: pattern_expr_id, expr_type: pattern_expr_type,
         sql: value_sql)
-    sql := `{{access_sql}} = {{value_sql}}`
+    output_json_type_cast_to(expr_type: pattern_expr_type, output_type:)
+    sql := `CAST({{access_sql}} AS {{output_type}}) = {{value_sql}}`
 */
 CREATE MATERIALIZED VIEW fact_where_cond AS
     SELECT DISTINCT
@@ -959,13 +972,15 @@ CREATE MATERIALIZED VIEW fact_where_cond AS
         fact_oexpr.pipeline_id,
         fact_oexpr.rule_id,
         fact_oexpr.fact_id,
-        (fact_oexpr.sql || ' = ' || substituted_expr.sql) AS sql
+        ('CAST(' || fact_oexpr.sql || ' AS ' || output_json_type_cast_to.output_type || ') = ' || substituted_expr.sql) AS sql
     FROM fact_oexpr
     JOIN substituted_expr
         ON fact_oexpr.pipeline_id = substituted_expr.pipeline_id
         AND fact_oexpr.rule_id = substituted_expr.rule_id
         AND fact_oexpr.pattern_expr_id = substituted_expr.expr_id
         AND fact_oexpr.pattern_expr_type = substituted_expr.expr_type
+    JOIN output_json_type_cast_to
+        ON fact_oexpr.pattern_expr_type = output_json_type_cast_to.expr_type
     WHERE fact_oexpr.pattern_expr_type NOT IN ('var_expr', 'dict_expr', 'array_expr');
 
 /*
@@ -988,7 +1003,8 @@ match_where_cond(pipeline_id:, rule_id:, match_id:, sql:) <-
     substituted_expr(
         pipeline_id:, rule_id:, expr_id: pattern_expr_id, expr_type: pattern_expr_type,
         sql: value_sql)
-    sql := `{{access_sql}} = {{value_sql}}`
+    output_json_type_cast_to(expr_type: pattern_expr_type, output_type:)
+    sql := `CAST({{access_sql}} AS {{output_type}}) = {{value_sql}}`
 */
 CREATE MATERIALIZED VIEW match_where_cond AS
     SELECT DISTINCT
@@ -1014,13 +1030,15 @@ CREATE MATERIALIZED VIEW match_where_cond AS
         match_oexpr.pipeline_id,
         match_oexpr.rule_id,
         match_oexpr.match_id,
-        (match_oexpr.sql || ' = ' || substituted_expr.sql) AS sql
+        ('CAST(' || match_oexpr.sql || ' AS ' || output_json_type_cast_to.output_type || ') = ' || substituted_expr.sql) AS sql
     FROM match_oexpr
     JOIN substituted_expr
         ON match_oexpr.pipeline_id = substituted_expr.pipeline_id
         AND match_oexpr.rule_id = substituted_expr.rule_id
         AND match_oexpr.pattern_expr_id = substituted_expr.expr_id
         AND match_oexpr.pattern_expr_type = substituted_expr.expr_type
+    JOIN output_json_type_cast_to
+        ON match_oexpr.pattern_expr_type = output_json_type_cast_to.expr_type
     WHERE match_oexpr.pattern_expr_type NOT IN ('var_expr', 'dict_expr', 'array_expr');
 
 /*
@@ -1585,15 +1603,59 @@ CREATE MATERIALIZED VIEW join_sql AS
     );
 
 /*
+substituted_param_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:) <-
+    rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
+    substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:)
+    expr_type != 'array_expr'
+    expr_type != 'dict_expr'
+substituted_param_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:) <-
+    rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
+    substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
+    (expr_type = 'array_expr') or (expr_type = 'dict_expr')
+    sql := `CAST({{expr_sql}} AS VARIANT)`
+*/
+CREATE MATERIALIZED VIEW substituted_param_expr AS
+    SELECT DISTINCT
+        rule_param.pipeline_id,
+        rule_param.rule_id,
+        rule_param.expr_id,
+        rule_param.expr_type,
+        substituted_expr.sql
+    FROM rule_param
+    JOIN substituted_expr
+        ON rule_param.pipeline_id = substituted_expr.pipeline_id
+        AND rule_param.rule_id = substituted_expr.rule_id
+        AND rule_param.expr_id = substituted_expr.expr_id
+        AND rule_param.expr_type = substituted_expr.expr_type
+    WHERE rule_param.expr_type != 'array_expr'
+    AND rule_param.expr_type != 'dict_expr'
+
+    UNION
+
+    SELECT DISTINCT
+        rule_param.pipeline_id,
+        rule_param.rule_id,
+        rule_param.expr_id,
+        rule_param.expr_type,
+        ('CAST(' || substituted_expr.sql || ' AS VARIANT)') AS sql
+    FROM rule_param
+    JOIN substituted_expr
+        ON rule_param.pipeline_id = substituted_expr.pipeline_id
+        AND rule_param.rule_id = substituted_expr.rule_id
+        AND rule_param.expr_id = substituted_expr.expr_id
+        AND rule_param.expr_type = substituted_expr.expr_type
+    WHERE ((rule_param.expr_type = 'array_expr') OR (rule_param.expr_type = 'dict_expr'));
+
+/*
 select_sql(pipeline_id:, rule_id:, sql_lines:) <-
     constant_rule(pipeline_id:, rule_id:)
     rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
-    substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
+    substituted_param_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
     columns_sql := join(array<`{{expr_sql}} AS "{{key}}"`, by: key>, ", ")
     sql_lines := [`  SELECT DISTINCT {{columns_sql}}`]
 select_sql(pipeline_id:, rule_id:, sql_lines:) <-
     rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
-    substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
+    substituted_param_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
     full_where_cond_sql(pipeline_id:, rule_id:, sql_lines: where_sql_lines)
     having_cond_sql(pipeline_id:, rule_id:, sql_lines: having_sql_lines)
     grouped_by_sql(pipeline_id:, rule_id:, sql_lines: group_by_sql_lines)
@@ -1611,16 +1673,16 @@ CREATE MATERIALIZED VIEW select_sql AS
     SELECT DISTINCT
         rule_param.pipeline_id,
         rule_param.rule_id,
-        ARRAY['  SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_expr.sql || ' AS "' || rule_param.key || '"' ORDER BY rule_param.key), ', ')] AS sql_lines
+        ARRAY['  SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_param_expr.sql || ' AS "' || rule_param.key || '"' ORDER BY rule_param.key), ', ')] AS sql_lines
     FROM constant_rule
     JOIN rule_param
         ON constant_rule.pipeline_id = rule_param.pipeline_id
         AND constant_rule.rule_id = rule_param.rule_id
-    JOIN substituted_expr
-        ON rule_param.pipeline_id = substituted_expr.pipeline_id
-        AND rule_param.rule_id = substituted_expr.rule_id
-        AND rule_param.expr_id = substituted_expr.expr_id
-        AND rule_param.expr_type = substituted_expr.expr_type
+    JOIN substituted_param_expr
+        ON rule_param.pipeline_id = substituted_param_expr.pipeline_id
+        AND rule_param.rule_id = substituted_param_expr.rule_id
+        AND rule_param.expr_id = substituted_param_expr.expr_id
+        AND rule_param.expr_type = substituted_param_expr.expr_type
     WHERE NOT EXISTS (
         SELECT 1
         FROM fact_alias
@@ -1635,18 +1697,18 @@ CREATE MATERIALIZED VIEW select_sql AS
         rule_param.pipeline_id,
         rule_param.rule_id,
         ARRAY_CONCAT(
-            ARRAY['  SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_expr.sql || ' AS "' || rule_param.key || '"' ORDER BY rule_param.key), ', ')],
+            ARRAY['  SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_param_expr.sql || ' AS "' || rule_param.key || '"' ORDER BY rule_param.key), ', ')],
             join_sql.sql_lines,
             full_where_cond_sql.sql_lines,
             grouped_by_sql.sql_lines,
             having_cond_sql.sql_lines
         ) AS sql_lines
     FROM rule_param
-    JOIN substituted_expr
-        ON rule_param.pipeline_id = substituted_expr.pipeline_id
-        AND rule_param.rule_id = substituted_expr.rule_id
-        AND rule_param.expr_id = substituted_expr.expr_id
-        AND rule_param.expr_type = substituted_expr.expr_type
+    JOIN substituted_param_expr
+        ON rule_param.pipeline_id = substituted_param_expr.pipeline_id
+        AND rule_param.rule_id = substituted_param_expr.rule_id
+        AND rule_param.expr_id = substituted_param_expr.expr_id
+        AND rule_param.expr_type = substituted_param_expr.expr_type
     JOIN full_where_cond_sql
         ON rule_param.pipeline_id = full_where_cond_sql.pipeline_id
         AND rule_param.rule_id = full_where_cond_sql.rule_id
@@ -1792,7 +1854,7 @@ CREATE MATERIALIZED VIEW schema_table_with_sql AS
     SELECT DISTINCT
         schema_table.pipeline_id,
         schema_table.table_name,
-        'WITH ("materialized" = "true")' AS sql
+        'WITH (' || '''' || 'materialized' || '''' || ' = ' || '''' || 'true' || '''' || ')' AS sql
     FROM schema_table
     WHERE schema_table."materialized"
     

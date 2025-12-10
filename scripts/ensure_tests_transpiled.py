@@ -7,7 +7,23 @@ import aiohttp
 import json5
 
 import grasp.parser as parser
-from grasp.scripts.util import testcase_key, insert_records, file_hash, need_to_transpile_testcase, adhoc_query, testcase_dest_path, testcase_schema_path, fetch_ingest_status
+from grasp.scripts.util import testcase_key, insert_records, file_hash, need_to_transpile_testcase, adhoc_query, testcase_dest_path, testcase_schema_path, wait_till_input_tokens_processed
+
+
+
+async def start_transaction(session, pipeline_name):
+    url = f'/v0/pipelines/{pipeline_name}/start_transaction'
+    async with session.post(url) as resp:
+        if resp.status not in [200, 201]:
+            body = await resp.text()
+            raise Exception(f"Unexpected response {resp.status}: {body}")
+
+async def commit_transaction(session, pipeline_name):
+    url = f'/v0/pipelines/{pipeline_name}/commit_transaction'
+    async with session.post(url) as resp:
+        if resp.status not in [200, 201]:
+            body = await resp.text()
+            raise Exception(f"Unexpected response {resp.status}: {body}")
 
 
 
@@ -70,36 +86,19 @@ async def main(testcases_paths):
     queued_tokens = {}
     with_errors = {}
     async with aiohttp.ClientSession(feldera_url, timeout=aiohttp.ClientTimeout(sock_read=0,total=0)) as session:
-        # await start_transaction(session, pipeline_name)
+        await start_transaction(session, pipeline_name)
         for testcase_path in testcases_paths:
             if need_to_transpile_testcase(testcase_path, cache_dir):
                 # insert all inputs at once, so it would transpile in parallel
                 (pipeline_id, tokens) = await enqueue_transpilation(testcase_path, pipeline_name, session)
                 queued_tokens[testcase_path] = tokens
                 pipeline_ids[testcase_path] = pipeline_id
-        # await commit_transaction(session, pipeline_name)
+        await commit_transaction(session, pipeline_name)
 
         # print(f"Queued: {queued}")
 
-        # while queued_tokens or fin_tokens:
-        while queued_tokens:
-            for testcase_path, tokens in {**queued_tokens}.items():
-                pipeline_id = pipeline_ids[testcase_path]
-                for token in list(tokens):
-                    status = await fetch_ingest_status(session, pipeline_name, token)
-                    match status:
-                        case {'status': 'inprogress'}:
-                            pass
-                        case {'status': 'complete'}:
-                            # print(f"Insert completed: {token}")
-                            tokens.remove(token)
-                        case _:
-                            raise Exception(f"Unknown ingest status: {status}")
-                
-                if not tokens:
-                    del queued_tokens[testcase_path]
-
-            await asyncio.sleep(1)
+        all_tokens = set().union(*queued_tokens.values())
+        await wait_till_input_tokens_processed(session, pipeline_name, all_tokens)
 
         paths_without_errors = (set(testcases_paths) - set(with_errors.keys())) & set(pipeline_ids.keys())
         for testcase_path in paths_without_errors:
