@@ -6,7 +6,7 @@ import json5
 import json
 import aiohttp
 
-from grasp.scripts.util import testcase_dest_path, recompile_pipeline, do_need_to_recompile_pipeline, wait_till_pipeline_compiled, ensure_pipeline_started, testcase_expected_records_path, adhoc_query, testcase_key, testcase_table_inputs_paths, insert_records, wait_till_input_tokens_processed
+from grasp.util import testcase_dest_path, recompile_pipeline, do_need_to_recompile_pipeline, wait_till_pipeline_compiled, ensure_pipeline_started, testcase_expected_records_path, adhoc_query, testcase_key, testcase_table_inputs_paths, insert_records, wait_till_input_tokens_processed
 
 
 

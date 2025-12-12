@@ -2,7 +2,7 @@ import os
 import asyncio
 import aiohttp
 
-from grasp.scripts.util import fetch_pipeline_status, recompile_pipeline, do_need_to_recompile_pipeline, wait_till_pipeline_compiled, ensure_pipeline_started
+from grasp.util import fetch_pipeline_status, recompile_pipeline, do_need_to_recompile_pipeline, wait_till_pipeline_compiled, ensure_pipeline_started
 
 
 

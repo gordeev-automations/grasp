@@ -7,7 +7,7 @@ import aiohttp
 import json5
 
 import grasp.parser as parser
-from grasp.scripts.util import testcase_key, insert_records, file_hash, need_to_transpile_testcase, adhoc_query, testcase_dest_path, testcase_schema_path, wait_till_input_tokens_processed
+from grasp.util import testcase_key, insert_records, file_hash, need_to_transpile_testcase, adhoc_query, testcase_dest_path, testcase_schema_path, wait_till_input_tokens_processed
 
 
 
