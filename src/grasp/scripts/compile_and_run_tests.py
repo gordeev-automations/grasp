@@ -75,7 +75,7 @@ async def main(testcases_paths):
         await ensure_pipeline_started(session, pipeline_name)
         tokens = await insert_testcases_input_data(session, pipeline_name, testcases_paths)
         await wait_till_input_tokens_processed(session, pipeline_name, tokens)
-        await asyncio.sleep(5)
+        # await asyncio.sleep(5)
 
         at_least_one_failed = False
         for testcase_path in testcases_paths:

@@ -109,7 +109,7 @@ def records_from_aggregated_expr(aggr_expr, rule_id, expr_id, fn_name, fn_args, 
         case [Tree(data=Token(type='RULE', value='val_args'), children=val_args)]:
             return functools.reduce(
                 merge_records,[
-                    *records_from_val_args(rule_id, fncall_id, 'aggr_expr', val_args, idgen),
+                    *records_from_val_args(rule_id, fncall_id, val_args, idgen),
                     {
                         'fncall_expr': [{
                             'rule_id': rule_id,
@@ -132,8 +132,8 @@ def records_from_aggregated_expr(aggr_expr, rule_id, expr_id, fn_name, fn_args, 
         ]:
             return functools.reduce(
                 merge_records,[
-                    *records_from_val_args(rule_id, fncall_id, 'aggr_expr', val_args, idgen),
-                    *records_from_kv_args(rule_id, fncall_id, 'aggr_expr', kv_args, idgen),
+                    *records_from_val_args(rule_id, fncall_id, val_args, idgen),
+                    *records_from_kv_args(rule_id, fncall_id, kv_args, idgen),
                     {
                         'fncall_expr': [{
                             'rule_id': rule_id,
@@ -675,9 +675,9 @@ def records_from_schema(schema):
 
 
 
-def parse(text, original_path, schema=None):
+def parse(text, original_path, schema=None, idgen=None):
     scripts_dir = os.path.abspath(os.path.dirname(__file__))
-    grammar_text = open(f'{scripts_dir}/grammar.lark', 'r').read()
+    grammar_text = open(f'{scripts_dir}/../../grammar.lark', 'r').read()
     # propagate token positions: line, column, end_line, end_col.
     # https://github.com/lark-parser/lark/issues/12#issuecomment-304404835
     parser = Lark(grammar_text, parser="earley", propagate_positions=True)
@@ -689,7 +689,11 @@ def parse(text, original_path, schema=None):
     tree = parser.parse("\n" + text + "\n")
     # print(f'\n\ntree:\n{tree}\n\n')
     # print(f'\n\ntree:\n{tree.pretty()}\n\n')
-    idgen = natural_num_generator()
-    return merge_records(
-        records_from_tree(tree, original_path, idgen),
-        records_from_schema(schema))
+    if not idgen:
+        idgen = natural_num_generator()
+    if schema:
+        return merge_records(
+            records_from_tree(tree, original_path, idgen),
+            records_from_schema(schema))
+
+    return records_from_tree(tree, original_path, idgen)

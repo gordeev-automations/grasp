@@ -1,4 +1,5 @@
 import os
+import sys
 import glob
 import hashlib
 import asyncio
@@ -141,9 +142,23 @@ async def insert_records(session, pipeline_name, records):
                 raise Exception(f"Unexpected response {resp.status}: {body}")
             json_resp = await resp.json()
             insert_tokens.add(json_resp['token'])
-            print(f"Inserted {len(rows)} records into {table_name}: {json_resp}")
+            print(f"Inserted {len(rows)} records into {table_name}: {json_resp}", file=sys.stderr)
 
     return insert_tokens
+
+async def start_transaction(session, pipeline_name):
+    url = f'/v0/pipelines/{pipeline_name}/start_transaction'
+    async with session.post(url) as resp:
+        if resp.status not in [200, 201]:
+            body = await resp.text()
+            raise Exception(f"Unexpected response {resp.status}: {body}")
+
+async def commit_transaction(session, pipeline_name):
+    url = f'/v0/pipelines/{pipeline_name}/commit_transaction'
+    async with session.post(url) as resp:
+        if resp.status not in [200, 201]:
+            body = await resp.text()
+            raise Exception(f"Unexpected response {resp.status}: {body}")
 
 async def wait_till_input_tokens_processed(session, pipeline_name, tokens):
     tokens = set(tokens)

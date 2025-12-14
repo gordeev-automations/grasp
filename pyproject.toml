@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "grasp"
+version = "0.1.0"
+authors = [
+  { name="Vladimir Gordeev", email="vladimir-vg0@yandex.ru" },
+]
+
+[project.urls]
+Homepage = "https://github.com/gordeev-automations/grasp"
+Issues = "https://github.com/gordeev-automations/grasp/issues"
+
+[project.scripts]
+# The format is: <command_name> = <module_path>:<function_name>
+grasp = "grasp.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/grasp"]
