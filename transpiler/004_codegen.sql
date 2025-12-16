@@ -941,8 +941,10 @@ CREATE MATERIALIZED VIEW output_json_type_cast_to AS
 # just variable referenced, make sure it is not null
 fact_where_cond(pipeline_id:, rule_id:, fact_id:, sql:) <-
     fact_oexpr(
-        pipeline_id:, rule_id:, pattern_expr_type: "var_expr",
+        pipeline_id:, rule_id:, pattern_expr_type: "var_expr", pattern_expr_id:,
         sql: access_sql, negated: false, fact_id:)
+    # we do not add check for null, if there is a prefix that allows it
+    not var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, maybe_null_prefix: true)
     sql := `{{access_sql}} IS NOT NULL`
 fact_where_cond(pipeline_id:, rule_id:, fact_id:, sql:) <-
     fact_oexpr(
@@ -966,6 +968,14 @@ CREATE MATERIALIZED VIEW fact_where_cond AS
     FROM fact_oexpr
     WHERE fact_oexpr.pattern_expr_type = 'var_expr'
     AND NOT fact_oexpr.negated
+    AND NOT EXISTS (
+        SELECT *
+        FROM var_expr
+        WHERE fact_oexpr.pipeline_id = var_expr.pipeline_id
+        AND fact_oexpr.rule_id = var_expr.rule_id
+        AND fact_oexpr.pattern_expr_id = var_expr.expr_id
+        AND var_expr.maybe_null_prefix
+    )
 
     UNION
 

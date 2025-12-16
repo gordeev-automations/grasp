@@ -165,6 +165,7 @@ def records_from_dict_arg(arg, rule_id, dict_id, idgen):
             return {
                 'var_expr': [{
                     'rule_id': rule_id, 'expr_id': expr_id, 'var_name': key,
+                    'maybe_null_prefix': False,
 
                     'start_line': arg.children[0].line,
                     'start_column': arg.children[0].column,
@@ -251,6 +252,7 @@ def records_from_array_element(element, index, rule_id, array_id, idgen):
                 'var_expr': [{
                     'rule_id': rule_id, 'expr_id': expr_id, 'var_name': var_name,
                     'special_prefix': '*',
+                    'maybe_null_prefix': False,
 
                     'start_line': element.children[0].line,
                     'start_column': element.children[0].column,
@@ -309,6 +311,7 @@ def records_from_expr(expr, rule_id, expr_id, idgen, assigned_type=None):
                     'expr_id': expr_id,
                     'var_name': value,
                     'assigned_type': assigned_type,
+                    'maybe_null_prefix': False,
 
                     'start_line': expr.line,
                     'start_column': expr.column,
@@ -422,6 +425,7 @@ def records_from_fact_arg(fact_arg, rule_id, fact_id, idgen):
                 }],
                 'var_expr': [{
                     'rule_id': rule_id, 'expr_id': expr_id, 'var_name': key,
+                    'maybe_null_prefix': False,
 
                     'start_line': fact_arg.children[0].line,
                     'start_column': fact_arg.children[0].column,
@@ -429,6 +433,35 @@ def records_from_fact_arg(fact_arg, rule_id, fact_id, idgen):
                     'end_column': fact_arg.children[0].end_column,
                 }],
             }
+
+        case Tree(data=Token(type='RULE', value='kv_arg'), children=[
+            Token(type='IDENTIFIER', value=key),
+            Tree(data=Token(type='RULE', value='expr'), children=[
+                Token(type='MAYBE_NULL_PREFIX'),
+                Token(type='IDENTIFIER', value=var_name),
+            ]),
+        ]):
+            return {
+                'fact_arg': [{
+                    'rule_id': rule_id, 'fact_id': fact_id, 'key': key,
+                    'expr_id': expr_id, 'expr_type': 'var_expr',
+
+                    'start_line': fact_arg.meta.container_line,
+                    'start_column': fact_arg.meta.container_column,
+                    'end_line': fact_arg.meta.container_end_line,
+                    'end_column': fact_arg.meta.container_end_column,
+                }],
+                'var_expr': [{
+                    'rule_id': rule_id, 'expr_id': expr_id, 'var_name': var_name,
+                    'maybe_null_prefix': True,
+
+                    'start_line': fact_arg.children[0].line,
+                    'start_column': fact_arg.children[0].column,
+                    'end_line': fact_arg.children[0].end_line,
+                    'end_column': fact_arg.children[0].end_column,
+                }],
+            }
+
         case Tree(data=Token(type='RULE', value='kv_arg'), children=[
             Token(type='IDENTIFIER', value=key),
             Tree(data=Token(type='RULE', value='expr'), children=[expr]),
@@ -574,6 +607,7 @@ def records_from_rule_param(rule_param, rule_id, idgen):
                 }],
                 'var_expr': [{
                     'rule_id': rule_id, 'expr_id': expr_id, 'var_name': key,
+                    'maybe_null_prefix': False,
                 
                     'start_line': rule_param.children[0].line,
                     'start_column': rule_param.children[0].column,

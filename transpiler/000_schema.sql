@@ -141,6 +141,7 @@ CREATE TABLE var_expr (
     -- used in pattern matching
     special_prefix TEXT,
     assigned_type TEXT,
+    maybe_null_prefix BOOLEAN NOT NULL,
 
     start_line INTEGER NOT NULL,
     start_column INTEGER NOT NULL,

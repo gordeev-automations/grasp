@@ -9,7 +9,7 @@ aggregated(
 	at_least_one_without_age:, at_least_one_older_than_18:,
 	name_of_the_oldest:, name_of_the_youngest:
 ) <-
-	person(age:, name:)
+	person(age: ?age, name:)
 	max_age := max<age>
 	# at_least_one_without_age := some<is_NULL(age)>
 	at_least_one_without_age := some<age is NULL>
@@ -30,7 +30,7 @@ aggregated_by_country(
 	older_than_18 := age >= 18
 	at_least_one_without_age := some<age is NULL>
 	name_of_the_youngest := argmin<name, by: age>
-	person(name:, age:, country:)
+	person(name:, age: ?age, country:)
 
 # one conditional involves aggregated value, and must go to HAVING clause
 # the other goes to WHERE clause

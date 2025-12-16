@@ -73,14 +73,16 @@ async def main(testcases_paths):
     queued_tokens = {}
     with_errors = {}
     async with aiohttp.ClientSession(feldera_url, timeout=aiohttp.ClientTimeout(sock_read=0,total=0)) as session:
-        await start_transaction(session, pipeline_name)
-        for testcase_path in testcases_paths:
-            if need_to_transpile_testcase(testcase_path, cache_dir):
-                # insert all inputs at once, so it would transpile in parallel
-                (pipeline_id, tokens) = await enqueue_transpilation(testcase_path, pipeline_name, session)
-                queued_tokens[testcase_path] = tokens
-                pipeline_ids[testcase_path] = pipeline_id
-        await commit_transaction(session, pipeline_name)
+        try:
+            await start_transaction(session, pipeline_name)
+            for testcase_path in testcases_paths:
+                if need_to_transpile_testcase(testcase_path, cache_dir):
+                    # insert all inputs at once, so it would transpile in parallel
+                    (pipeline_id, tokens) = await enqueue_transpilation(testcase_path, pipeline_name, session)
+                    queued_tokens[testcase_path] = tokens
+                    pipeline_ids[testcase_path] = pipeline_id
+        finally:
+            await commit_transaction(session, pipeline_name)
 
         # print(f"Queued: {queued}")
 
