@@ -60,50 +60,20 @@ CREATE MATERIALIZED VIEW table_dependency AS
         AND t1.parent_table_name = t2.table_name;
 
 /*
-table_dependency(pipeline_id:, table_name:, parent_table_name:) <-
-    rule(pipeline_id:, table_name:, rule_id:)
-    body_fact(pipeline_id:, rule_id:, table_name: parent_table_name)
-table_dependency(pipeline_id:, table_name:, parent_table_name:) <-
-    table_dependency(pipeline_id:, table_name:, parent_table_name:)
-    table_dependency(pipeline_id:, table_name: parent_table_name, parent_table_name:)
-*/
--- DECLARE RECURSIVE VIEW table_dependency (pipeline_id TEXT, table_name TEXT, parent_table_name TEXT);
--- CREATE MATERIALIZED VIEW table_dependency AS
---     SELECT DISTINCT
---         rule.pipeline_id,
---         rule.table_name,
---         body_fact.table_name AS parent_table_name
---     FROM rule
---     JOIN body_fact
---         ON rule.pipeline_id = body_fact.pipeline_id
---         AND rule.rule_id = body_fact.rule_id
-
---     UNION
-
---     SELECT DISTINCT
---         t1.pipeline_id,
---         t1.table_name,
---         t2.parent_table_name
---     FROM table_dependency AS t1
---     JOIN table_dependency AS t2
---         ON t1.pipeline_id = t2.parent_table_name
---         AND t1.parent_table_name = t2.table_name;
-
-/*
 table_without_dependencies(pipeline_id:, table_name:) <-
-    table_dependency(pipeline_id:, parent_table_name: table_name)
-    not table_dependency(pipeline_id:, rule_id:, table_name:)
+    rule(pipeline_id:, table_name:, rule_id:)
+    not body_fact(pipeline_id:, rule_id:)
 */
 CREATE MATERIALIZED VIEW table_without_dependencies AS
     SELECT DISTINCT
-        table_dependency.pipeline_id,
-        table_dependency.parent_table_name AS table_name
-    FROM table_dependency
+        rule.pipeline_id,
+        rule.table_name
+    FROM rule
     WHERE NOT EXISTS (
         SELECT 1
-        FROM table_dependency AS t
-        WHERE t.pipeline_id = table_dependency.pipeline_id
-        AND t.table_name = table_dependency.parent_table_name
+        FROM body_fact
+        WHERE rule.pipeline_id = body_fact.pipeline_id
+        AND rule.rule_id = body_fact.rule_id
     );
 
 /*

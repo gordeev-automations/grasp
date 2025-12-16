@@ -9,7 +9,7 @@ from grasp.util import recompile_pipeline, do_need_to_recompile_pipeline, wait_t
 
 def root_dir():
     curr_dir = os.path.abspath(os.path.dirname(__file__))
-    return f'{curr_dir}/../../../'
+    return f'{curr_dir}/../../..'
 
 def read_transpiler_sql():
     # select all *.sql files from transpiler/ directory
@@ -38,7 +38,7 @@ async def ensure_transpiler_pipeline_is_ready(session, pipeline_name):
 
 async def main():
     feldera_url = 'http://localhost:8080'
-    pipeline_name = 'transpiler'
+    pipeline_name = 'grasp_transpiler'
 
     async with aiohttp.ClientSession(feldera_url, timeout=aiohttp.ClientTimeout(sock_read=0,total=0)) as session:
         await ensure_transpiler_pipeline_is_ready(session, pipeline_name)

@@ -11,6 +11,10 @@ from grasp.util import testcase_key, insert_records, file_hash, need_to_transpil
 
 
 
+def root_dir():
+    curr_dir = os.path.abspath(os.path.dirname(__file__))
+    return f'{curr_dir}/../../..'
+
 async def fetch_output_sql_lines(session, pipeline_name, pipeline_id):
     sql = f"SELECT sql_lines FROM full_pipeline_sql WHERE pipeline_id = '{pipeline_id}'"
     result = await adhoc_query(session, pipeline_name, sql)
@@ -59,10 +63,9 @@ async def write_output_sql(session, pipeline_name, pipeline_id, dest_path):
 
 async def main(testcases_paths):
     feldera_url = 'http://localhost:8080'
-    pipeline_name = 'transpiler'
+    pipeline_name = 'grasp_transpiler'
 
-    curr_dir = os.path.abspath(os.path.dirname(__file__))
-    cache_dir = f'{curr_dir}/../test/.grasp_cache'
+    cache_dir = f'{root_dir()}/test/.grasp_cache'
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
 

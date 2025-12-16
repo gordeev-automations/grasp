@@ -647,7 +647,8 @@ def records_from_tree(tree, original_source_path, idgen):
         case Tree(data=Token(type='RULE', value='start'), children=toplevel_decls):
             return functools.reduce(
                 merge_records,
-                [records_from_toplevel_decls(d, original_source_path, idgen) for d in toplevel_decls])
+                [records_from_toplevel_decls(d, original_source_path, idgen) for d in toplevel_decls],
+                {})
         case _:
             raise Exception(f"Invalid tree {tree}")
 

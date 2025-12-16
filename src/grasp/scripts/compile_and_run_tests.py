@@ -10,6 +10,10 @@ from grasp.util import testcase_dest_path, recompile_pipeline, do_need_to_recomp
 
 
 
+def root_dir():
+    curr_dir = os.path.abspath(os.path.dirname(__file__))
+    return f'{curr_dir}/../../..'
+
 def value_to_sql(v):
     if isinstance(v, str):
         return f"'{v}'"
@@ -48,15 +52,15 @@ async def insert_testcases_input_data(session, pipeline_name, testcases_paths):
 async def main(testcases_paths):
     feldera_url = 'http://localhost:8080'
     pipeline_name = 'grasp_testsuite'
-    curr_dir = os.path.abspath(os.path.dirname(__file__))
-    cache_dir = f'{curr_dir}/../test/.grasp_cache'
+    # curr_dir = os.path.abspath(os.path.dirname(__file__))
+    cache_dir = f'{root_dir()}/test/.grasp_cache'
 
     # prefer deterministic order
     testcases_paths.sort()
-    
+
     testsuite_sql = ''
-    udf_rs_path = f'{curr_dir}/../transpiler/udf.rs'
-    udf_sql_preface_path = f'{curr_dir}/../transpiler/001_udf.sql'
+    udf_rs_path = f'{root_dir()}/transpiler/udf.rs'
+    udf_sql_preface_path = f'{root_dir()}/transpiler/001_udf.sql'
     testsuite_sql += open(udf_sql_preface_path, 'r').read()
 
     for testcase_path in testcases_paths:

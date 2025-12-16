@@ -1,0 +1,8 @@
+fact1(a: "Matthew")
+fact1(a: "John")
+fact2(b: 1337)
+fact2(b: 999)
+
+cross_join(a:, b:) <-
+	fact1(a:)
+	fact2(b:)

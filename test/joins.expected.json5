@@ -1,0 +1,8 @@
+{
+    cross_join: [
+        {a: "Matthew", b: 999},
+        {a: "John", b: 999},
+        {a: "Matthew", b: 1337},
+        {a: "John", b: 1337},
+    ]
+}

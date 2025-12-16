@@ -965,6 +965,7 @@ CREATE MATERIALIZED VIEW fact_where_cond AS
         (fact_oexpr.sql || ' IS NOT NULL') AS sql
     FROM fact_oexpr
     WHERE fact_oexpr.pattern_expr_type = 'var_expr'
+    AND NOT fact_oexpr.negated
 
     UNION
 
@@ -981,7 +982,8 @@ CREATE MATERIALIZED VIEW fact_where_cond AS
         AND fact_oexpr.pattern_expr_type = substituted_expr.expr_type
     JOIN output_json_type_cast_to
         ON fact_oexpr.pattern_expr_type = output_json_type_cast_to.expr_type
-    WHERE fact_oexpr.pattern_expr_type NOT IN ('var_expr', 'dict_expr', 'array_expr');
+    WHERE fact_oexpr.pattern_expr_type NOT IN ('var_expr', 'dict_expr', 'array_expr')
+    AND NOT fact_oexpr.negated;
 
 /*
 match_where_cond(pipeline_id:, rule_id:, match_id:, sql:) <-
@@ -1593,7 +1595,7 @@ CREATE MATERIALIZED VIEW join_sql AS
     JOIN adjacent_facts AS a
         ON rule_join_sql.pipeline_id = a.pipeline_id
         AND rule_join_sql.rule_id = a.rule_id
-        AND rule_join_sql.fact_id = a.prev_fact_id
+        AND rule_join_sql.fact_id = a.next_fact_id
     WHERE NOT EXISTS (
         SELECT 1
         FROM adjacent_facts
