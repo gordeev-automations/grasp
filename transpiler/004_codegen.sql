@@ -53,45 +53,45 @@ sql_expr_template_part_with_substitution(pipeline_id:, rule_id:, expr_id:, part:
     sql_expr_template_part(pipeline_id:, rule_id:, expr_id:, part:, index:)
     not (part ~ "{{[a-z_][a-zA-Z0-9_]*}}")
 */
-DECLARE RECURSIVE VIEW sql_expr_template_part_with_substitution (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, part TEXT, "index" INTEGER);
-CREATE MATERIALIZED VIEW sql_expr_template_part_with_substitution AS
-    SELECT DISTINCT
-        sql_expr_template_part.pipeline_id,
-        sql_expr_template_part.rule_id,
-        sql_expr_template_part.expr_id,
-        canonical_var_bound_sql.sql AS part,
-        sql_expr_template_part."index"
-    FROM sql_expr_template_part
-    JOIN canonical_var_bound_sql
-        ON sql_expr_template_part.pipeline_id = canonical_var_bound_sql.pipeline_id
-        AND sql_expr_template_part.rule_id = canonical_var_bound_sql.rule_id
-        AND SUBSTRING(sql_expr_template_part.part FROM 3 FOR (CHAR_LENGTH(sql_expr_template_part.part)-4)) = canonical_var_bound_sql.var_name
-    WHERE sql_expr_template_part.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$'
+-- DECLARE RECURSIVE VIEW sql_expr_template_part_with_substitution (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, part TEXT, "index" INTEGER);
+-- CREATE MATERIALIZED VIEW sql_expr_template_part_with_substitution AS
+--     SELECT DISTINCT
+--         sql_expr_template_part.pipeline_id,
+--         sql_expr_template_part.rule_id,
+--         sql_expr_template_part.expr_id,
+--         canonical_var_bound_sql.sql AS part,
+--         sql_expr_template_part."index"
+--     FROM sql_expr_template_part
+--     JOIN canonical_var_bound_sql
+--         ON sql_expr_template_part.pipeline_id = canonical_var_bound_sql.pipeline_id
+--         AND sql_expr_template_part.rule_id = canonical_var_bound_sql.rule_id
+--         AND SUBSTRING(sql_expr_template_part.part FROM 3 FOR (CHAR_LENGTH(sql_expr_template_part.part)-4)) = canonical_var_bound_sql.var_name
+--     WHERE sql_expr_template_part.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$'
 
-    UNION
+--     UNION
 
-    SELECT DISTINCT
-        sql_expr_template_part.pipeline_id,
-        sql_expr_template_part.rule_id,
-        sql_expr_template_part.expr_id,
-        sql_expr_template_part.part,
-        sql_expr_template_part."index"
-    FROM sql_expr_template_part
-    WHERE NOT (sql_expr_template_part.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$');
+--     SELECT DISTINCT
+--         sql_expr_template_part.pipeline_id,
+--         sql_expr_template_part.rule_id,
+--         sql_expr_template_part.expr_id,
+--         sql_expr_template_part.part,
+--         sql_expr_template_part."index"
+--     FROM sql_expr_template_part
+--     WHERE NOT (sql_expr_template_part.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$');
 
 /*
 sql_expr_substitution_status(pipeline_id:, rule_id:, expr_id:, count: count<>) <-
     sql_expr_template_part_with_substitution(pipeline_id:, rule_id:, expr_id:, index:)
 */
-DECLARE RECURSIVE VIEW sql_expr_substitution_status (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, count BIGINT);
-CREATE MATERIALIZED VIEW sql_expr_substitution_status AS
-    SELECT DISTINCT
-        t.pipeline_id,
-        t.rule_id,
-        t.expr_id,
-        COUNT(*) AS count
-    FROM sql_expr_template_part_with_substitution AS t
-    GROUP BY t.pipeline_id, t.rule_id, t.expr_id;
+-- DECLARE RECURSIVE VIEW sql_expr_substitution_status (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, count BIGINT);
+-- CREATE MATERIALIZED VIEW sql_expr_substitution_status AS
+--     SELECT DISTINCT
+--         t.pipeline_id,
+--         t.rule_id,
+--         t.expr_id,
+--         COUNT(*) AS count
+--     FROM sql_expr_template_part_with_substitution AS t
+--     GROUP BY t.pipeline_id, t.rule_id, t.expr_id;
 
 /*
 sql_expr_all_vars_are_bound(pipeline_id:, rule_id:, expr_id:) <-
@@ -99,18 +99,18 @@ sql_expr_all_vars_are_bound(pipeline_id:, rule_id:, expr_id:) <-
     sql_expr_substitution_status(pipeline_id:, rule_id:, expr_id:, count:)
     count = array_length(template)
 */
-DECLARE RECURSIVE VIEW sql_expr_all_vars_are_bound (pipeline_id TEXT, rule_id TEXT, expr_id TEXT);
-CREATE MATERIALIZED VIEW sql_expr_all_vars_are_bound AS
-    SELECT DISTINCT
-        sql_expr.pipeline_id,
-        sql_expr.rule_id,
-        sql_expr.expr_id
-    FROM sql_expr
-    JOIN sql_expr_substitution_status
-        ON sql_expr.pipeline_id = sql_expr_substitution_status.pipeline_id
-        AND sql_expr.rule_id = sql_expr_substitution_status.rule_id
-        AND sql_expr.expr_id = sql_expr_substitution_status.expr_id
-    WHERE sql_expr_substitution_status.count = ARRAY_LENGTH(sql_expr.template);
+-- DECLARE RECURSIVE VIEW sql_expr_all_vars_are_bound (pipeline_id TEXT, rule_id TEXT, expr_id TEXT);
+-- CREATE MATERIALIZED VIEW sql_expr_all_vars_are_bound AS
+--     SELECT DISTINCT
+--         sql_expr.pipeline_id,
+--         sql_expr.rule_id,
+--         sql_expr.expr_id
+--     FROM sql_expr
+--     JOIN sql_expr_substitution_status
+--         ON sql_expr.pipeline_id = sql_expr_substitution_status.pipeline_id
+--         AND sql_expr.rule_id = sql_expr_substitution_status.rule_id
+--         AND sql_expr.expr_id = sql_expr_substitution_status.expr_id
+--     WHERE sql_expr_substitution_status.count = ARRAY_LENGTH(sql_expr.template);
 
 /*
 substituted_sql_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
@@ -118,21 +118,122 @@ substituted_sql_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
     sql_expr_template_part_with_substitution(pipeline_id:, rule_id:, expr_id:, part:, index:)
     sql := join(array<part, order_by: [index]>, "")
 */
-DECLARE RECURSIVE VIEW substituted_sql_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT);
-CREATE MATERIALIZED VIEW substituted_sql_expr AS
+-- DECLARE RECURSIVE VIEW substituted_sql_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT);
+-- CREATE MATERIALIZED VIEW substituted_sql_expr AS
+--     SELECT DISTINCT
+--         a.pipeline_id,
+--         a.rule_id,
+--         a.expr_id,
+--         ARRAY_TO_STRING(ARRAY_AGG(b.part ORDER BY b."index"), '') AS sql
+--     FROM sql_expr_all_vars_are_bound AS a
+--     JOIN sql_expr_template_part_with_substitution AS b
+--         ON a.pipeline_id = b.pipeline_id
+--         AND a.rule_id = b.rule_id
+--         AND a.expr_id = b.expr_id
+--     GROUP BY a.pipeline_id, a.rule_id, a.expr_id;
+
+DECLARE RECURSIVE VIEW substituted_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, expr_type TEXT, sql TEXT, aggregated BOOLEAN);
+
+/*
+str_template_part(pipeline_id:, rule_id:, expr_id:, part:, index:) <-
+    str_template_expr(pipeline_id:, rule_id:, expr_id:, template:)
+    (element: part, index:) <- template
+*/
+CREATE MATERIALIZED VIEW str_template_part AS
+    SELECT DISTINCT
+        str_template_expr.pipeline_id,
+        str_template_expr.rule_id,
+        str_template_expr.expr_id,
+        t.part,
+        t."index"
+    FROM str_template_expr
+    CROSS JOIN UNNEST(str_template_expr.template) WITH ORDINALITY AS t (part, "index");
+
+/*
+str_template_part_with_substitution(
+    pipeline_id:, rule_id:, expr_id:, part:, index:, aggregated:
+) <-
+    str_template_part(pipeline_id:, rule_id:, expr_id:, part: source_part, index:)
+    source_part ~ "{{[a-z_][a-zA-Z0-9_]*}}"
+    var_name := part[2:-2]
+    canonical_var_bound_sql(pipeline_id:, rule_id:, var_name:, sql: part, aggregated:)
+str_template_part_with_substitution(
+    pipeline_id:, rule_id:, expr_id:, part:, index:, aggregated: false
+) <-
+    str_template_part(pipeline_id:, rule_id:, expr_id:, part:, index:)
+    not (part ~ "{{[a-z_][a-zA-Z0-9_]*}}")
+*/
+DECLARE RECURSIVE VIEW str_template_part_with_substitution (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, part TEXT, "index" INTEGER, aggregated BOOLEAN);
+CREATE MATERIALIZED VIEW str_template_part_with_substitution AS
+    SELECT DISTINCT
+        str_template_part.pipeline_id,
+        str_template_part.rule_id,
+        str_template_part.expr_id,
+        canonical_var_bound_sql.sql AS part,
+        str_template_part."index",
+        canonical_var_bound_sql.aggregated
+    FROM str_template_part
+    JOIN canonical_var_bound_sql
+        ON str_template_part.pipeline_id = canonical_var_bound_sql.pipeline_id
+        AND str_template_part.rule_id = canonical_var_bound_sql.rule_id
+        AND SUBSTRING(str_template_part.part FROM 3 FOR (CHAR_LENGTH(str_template_part.part)-4)) = canonical_var_bound_sql.var_name
+    WHERE str_template_part.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$'
+
+    UNION
+
+    SELECT DISTINCT
+        str_template_part.pipeline_id,
+        str_template_part.rule_id,
+        str_template_part.expr_id,
+        ('''' || str_template_part.part || '''') AS part,
+        str_template_part."index",
+        false AS aggregated
+    FROM str_template_part
+    WHERE NOT (str_template_part.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$');
+
+/*
+str_template_expr_all_vars_are_bound(pipeline_id:, rule_id:, expr_id:) <-
+    str_template_expr(pipeline_id:, rule_id:, expr_id:, template:)
+    str_template_part_with_substitution(pipeline_id:, rule_id:, expr_id:)
+    count<> = array_length(template)
+*/
+DECLARE RECURSIVE VIEW str_template_expr_all_vars_are_bound (pipeline_id TEXT, rule_id TEXT, expr_id TEXT);
+CREATE MATERIALIZED VIEW str_template_expr_all_vars_are_bound AS
+    SELECT DISTINCT
+        str_template_expr.pipeline_id,
+        str_template_expr.rule_id,
+        str_template_expr.expr_id
+    FROM str_template_expr
+    JOIN str_template_part_with_substitution
+        ON str_template_expr.pipeline_id = str_template_part_with_substitution.pipeline_id
+        AND str_template_expr.rule_id = str_template_part_with_substitution.rule_id
+        AND str_template_expr.expr_id = str_template_part_with_substitution.expr_id
+    GROUP BY str_template_expr.pipeline_id, str_template_expr.rule_id, str_template_expr.expr_id, str_template_expr.template
+    HAVING COUNT(*) = ARRAY_LENGTH(str_template_expr.template);
+
+/*
+sustituted_str_template_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:) <-
+    str_template_expr_all_vars_are_bound(pipeline_id:, rule_id:, expr_id:)
+    str_template_part_with_substitution(pipeline_id:, rule_id:, expr_id:, part:, index:)
+    sql := "(" ++ join(array<part, order_by: [index]>, " || ") ++ ")"
+*/
+DECLARE RECURSIVE VIEW substituted_str_template_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT, aggregated BOOLEAN);
+CREATE MATERIALIZED VIEW substituted_str_template_expr AS
     SELECT DISTINCT
         a.pipeline_id,
         a.rule_id,
         a.expr_id,
-        ARRAY_TO_STRING(ARRAY_AGG(b.part ORDER BY b."index"), '') AS sql
-    FROM sql_expr_all_vars_are_bound AS a
-    JOIN sql_expr_template_part_with_substitution AS b
+        (
+            '(' ||
+            ARRAY_TO_STRING(ARRAY_AGG(b.part ORDER BY b."index"), ' || ') ||
+            ')') AS sql,
+        SOME(b.aggregated) AS aggregated
+    FROM str_template_expr_all_vars_are_bound AS a
+    JOIN str_template_part_with_substitution AS b
         ON a.pipeline_id = b.pipeline_id
         AND a.rule_id = b.rule_id
         AND a.expr_id = b.expr_id
     GROUP BY a.pipeline_id, a.rule_id, a.expr_id;
-
-DECLARE RECURSIVE VIEW substituted_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, expr_type TEXT, sql TEXT, aggregated BOOLEAN);
 
 /*
 substituted_val_arg(pipeline_id:, rule_id:, fncall_id:, arg_index:, sql:) <-
@@ -183,23 +284,31 @@ CREATE MATERIALIZED VIEW substituted_kv_arg AS
 /*
 # all aggregate functions are mapped here
 # because arguments that they accept vary a lot
-substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
-    aggr_expr_matching_signature(
+substituted_fncall_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated: true) <-
+    fncall_expr_matching_signature(
         pipeline_id:, rule_id:, expr_id:, fn_name: "count",
-        val_arg_count: 0, kv_arg_keys: [])
+        val_arg_count: 0, kv_arg_keys: [], aggregated: true)
     sql := "COUNT(*)"
-substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
-    aggr_expr_matching_signature(
+substituted_fncall_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:) <-
+    fncall_expr_matching_signature(
         pipeline_id:, rule_id:, expr_id:, sql_name:, fncall_id:,
-        val_arg_count: 1, kv_arg_keys: [])
+        val_arg_count: 1, kv_arg_keys: [], aggregated:)
     substituted_val_arg(
         pipeline_id:, rule_id:, fncall_id:,
         arg_index: 0, sql: arg_sql)
     sql := `{{sql_name}}({{arg_sql}})`
-substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
-    aggr_expr_matching_signature(
+substituted_fncall_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:) <-
+    fncall_expr_matching_signature(
+        pipeline_id:, rule_id:, expr_id:, fn_name: "is_NULL", sql_name: NULL, fncall_id:,
+        val_arg_count: 1, kv_arg_keys: [], aggregated:)
+    substituted_val_arg(
+        pipeline_id:, rule_id:, fncall_id:,
+        arg_index: 0, sql: arg_sql)
+    sql := `({{arg_sql}} IS NULL)`
+substituted_fncall_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated: true) <-
+    fncall_expr_matching_signature(
         pipeline_id:, rule_id:, expr_id:, fn_name:, fncall_id:, sql_name:,
-        val_arg_count: 1, kv_arg_keys: ["by"])
+        val_arg_count: 1, kv_arg_keys: ["by"], aggregated: true)
     fn_name in ["argmin", "argmax"]
     substituted_val_arg(
         pipeline_id:, rule_id:, fncall_id:,
@@ -209,17 +318,19 @@ substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
         key: "by", sql: by_sql)
     sql := `{{sql_name}}({{arg_sql}}, {{by_sql}})`
 */
-DECLARE RECURSIVE VIEW substituted_aggr_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT);
-CREATE MATERIALIZED VIEW substituted_aggr_expr AS
+DECLARE RECURSIVE VIEW substituted_fncall_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT, aggregated BOOLEAN);
+CREATE MATERIALIZED VIEW substituted_fncall_expr AS
     SELECT DISTINCT
         a.pipeline_id,
         a.rule_id,
         a.expr_id,
-        'COUNT(*)' AS sql
-    FROM aggr_expr_matching_signature AS a
+        'COUNT(*)' AS sql,
+        a.aggregated
+    FROM fncall_expr_matching_signature AS a
     WHERE a.fn_name = 'count'
     AND a.val_arg_count = 0
     AND ARRAY_SIZE(a.kv_arg_keys) = 0
+    AND a.aggregated
     
     UNION
 
@@ -227,24 +338,46 @@ CREATE MATERIALIZED VIEW substituted_aggr_expr AS
         a.pipeline_id,
         a.rule_id,
         a.expr_id,
-        (a.sql_name || '(' || c.sql || ')') AS sql
-    FROM aggr_expr_matching_signature AS a
+        (a.sql_name || '(' || c.sql || ')') AS sql,
+        a.aggregated
+    FROM fncall_expr_matching_signature AS a
     JOIN substituted_val_arg AS c
         ON a.pipeline_id = c.pipeline_id
         AND a.rule_id = c.rule_id
         AND a.fncall_id = c.fncall_id
         AND c.arg_index = 0
     WHERE a.val_arg_count = 1
+    AND a.sql_name IS NOT NULL
     AND ARRAY_SIZE(a.kv_arg_keys) = 0
-    
+
     UNION
 
     SELECT DISTINCT
         a.pipeline_id,
         a.rule_id,
         a.expr_id,
-        (a.sql_name || '(' || c.sql || ', ' || d.sql || ')') AS sql
-    FROM aggr_expr_matching_signature AS a
+        ('(' || c.sql || ' IS NULL)') AS sql,
+        a.aggregated
+    FROM fncall_expr_matching_signature AS a
+    JOIN substituted_val_arg AS c
+        ON a.pipeline_id = c.pipeline_id
+        AND a.rule_id = c.rule_id
+        AND a.fncall_id = c.fncall_id
+        AND c.arg_index = 0
+    WHERE a.fn_name = 'is_NULL'
+    AND a.sql_name IS NULL
+    AND a.val_arg_count = 1
+    AND ARRAY_SIZE(a.kv_arg_keys) = 0
+
+    UNION
+
+    SELECT DISTINCT
+        a.pipeline_id,
+        a.rule_id,
+        a.expr_id,
+        (a.sql_name || '(' || c.sql || ', ' || d.sql || ')') AS sql,
+        a.aggregated
+    FROM fncall_expr_matching_signature AS a
     JOIN substituted_val_arg AS c
         ON a.pipeline_id = c.pipeline_id
         AND a.rule_id = c.rule_id
@@ -256,6 +389,7 @@ CREATE MATERIALIZED VIEW substituted_aggr_expr AS
         AND a.fncall_id = d.fncall_id
         AND d.key = 'by'
     WHERE a.fn_name in ('argmin', 'argmax')
+    AND a.aggregated
     AND a.val_arg_count = 1
     AND ARRAY_SIZE(a.kv_arg_keys) = 1;
 
@@ -379,36 +513,41 @@ CREATE MATERIALIZED VIEW substituted_binop_expr AS
         ON b.op = d.op;
 
 /*
-substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "sql_expr", sql:, aggregated: false) <-
-    substituted_sql_expr(pipeline_id:, rule_id:, expr_id:, sql:)
+#substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "sql_expr", sql:, aggregated: false) <-
+#    substituted_sql_expr(pipeline_id:, rule_id:, expr_id:, sql:)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "int_expr", sql:, aggregated: false) <-
     int_expr(pipeline_id:, rule_id:, expr_id:, value:)
     sql := string(value)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "str_expr", sql:, aggregated: false) <-
     str_expr(pipeline_id:, rule_id:, expr_id:, value:)
     sql := `'{{value}}'`
+substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "str_template_expr", sql:, aggregated:) <-
+    sustituted_str_template_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "null_expr", sql:, aggregated: false) <-
     null_expr(pipeline_id:, rule_id:, expr_id:)
     sql := 'NULL'
+substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "bool_expr", sql:, aggregated: false) <-
+    bool_expr(pipeline_id:, rule_id:, expr_id:, value:)
+    sql := `{{value}}
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "binop_expr", sql:, aggregated:) <-
     substituted_binop_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "var_expr", sql:, aggregated:) <-
     var_expr(pipeline_id:, rule_id:, expr_id:, var_name:)
     canonical_var_bound_sql(pipeline_id:, rule_id:, var_name:, sql:, aggregated:)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "fncall_expr", sql:, aggregated: true) <-
-    substituted_aggr_expr(pipeline_id:, rule_id:, expr_id:, sql:)
+    substituted_fncall_expr(pipeline_id:, rule_id:, expr_id:, sql:)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "array_expr", sql:, aggregated:) <-
     substituted_array_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "dict_expr", sql:, aggregated:) <-
     substituted_dict_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:)
 */
 CREATE MATERIALIZED VIEW substituted_expr AS
-    SELECT a.pipeline_id, a.rule_id, a.expr_id, CAST('sql_expr' AS TEXT) AS expr_type, a.sql, false AS aggregated
-    FROM substituted_sql_expr AS a
+    --SELECT a.pipeline_id, a.rule_id, a.expr_id, CAST('sql_expr' AS TEXT) AS expr_type, a.sql, false AS aggregated
+    --FROM substituted_sql_expr AS a
     
-    UNION
+    --UNION
     
-    SELECT b.pipeline_id, b.rule_id, b.expr_id, 'int_expr' AS expr_type, b.value AS sql, false AS aggregated
+    SELECT b.pipeline_id, b.rule_id, b.expr_id, CAST('int_expr' AS TEXT) AS expr_type, b.value AS sql, false AS aggregated
     FROM int_expr AS b
 
     UNION
@@ -418,8 +557,18 @@ CREATE MATERIALIZED VIEW substituted_expr AS
 
     UNION
 
+    SELECT d.pipeline_id, d.rule_id, d.expr_id, 'str_template_expr' AS expr_type, d.sql, d.aggregated
+    FROM substituted_str_template_expr AS d
+
+    UNION
+
     SELECT d.pipeline_id, d.rule_id, d.expr_id, 'null_expr' AS expr_type, 'NULL' AS sql, false AS aggregated
     FROM null_expr AS d
+
+    UNION
+
+    SELECT d.pipeline_id, d.rule_id, d.expr_id, 'bool_expr' AS expr_type, CAST(d.value AS TEXT) AS sql, false AS aggregated
+    FROM bool_expr AS d
 
     UNION
 
@@ -438,7 +587,7 @@ CREATE MATERIALIZED VIEW substituted_expr AS
     UNION
 
     SELECT e.pipeline_id, e.rule_id, e.expr_id, 'fncall_expr' AS expr_type, e.sql, true AS aggregated
-    FROM substituted_aggr_expr AS e
+    FROM substituted_fncall_expr AS e
 
     UNION
 
@@ -913,17 +1062,17 @@ sql_where_cond(pipeline_id:, rule_id:, cond_id:, sql:) <-
     body_sql_cond(pipeline_id:, rule_id:, cond_id:, sql_expr_id: expr_id)
     substituted_sql_expr(pipeline_id:, rule_id:, expr_id:, sql:)
 */
-CREATE MATERIALIZED VIEW sql_where_cond AS
-    SELECT DISTINCT
-        body_sql_cond.pipeline_id,
-        body_sql_cond.rule_id,
-        body_sql_cond.cond_id,
-        substituted_sql_expr.sql
-    FROM body_sql_cond
-    JOIN substituted_sql_expr
-        ON body_sql_cond.pipeline_id = substituted_sql_expr.pipeline_id
-        AND body_sql_cond.rule_id = substituted_sql_expr.rule_id
-        AND body_sql_cond.sql_expr_id = substituted_sql_expr.expr_id;
+-- CREATE MATERIALIZED VIEW sql_where_cond AS
+--     SELECT DISTINCT
+--         body_sql_cond.pipeline_id,
+--         body_sql_cond.rule_id,
+--         body_sql_cond.cond_id,
+--         substituted_sql_expr.sql
+--     FROM body_sql_cond
+--     JOIN substituted_sql_expr
+--         ON body_sql_cond.pipeline_id = substituted_sql_expr.pipeline_id
+--         AND body_sql_cond.rule_id = substituted_sql_expr.rule_id
+--         AND body_sql_cond.sql_expr_id = substituted_sql_expr.expr_id;
 
 /*
 output_json_type_cast_to(expr_type: "int_expr", output_type: "DECIMAL")
@@ -1054,8 +1203,8 @@ CREATE MATERIALIZED VIEW match_where_cond AS
     WHERE match_oexpr.pattern_expr_type NOT IN ('var_expr', 'dict_expr', 'array_expr');
 
 /*
-where_cond(pipeline_id:, rule_id:, sql:) <-
-    sql_where_cond(pipeline_id:, rule_id:, sql:)
+#where_cond(pipeline_id:, rule_id:, sql:) <-
+#    sql_where_cond(pipeline_id:, rule_id:, sql:)
 where_cond(pipeline_id:, rule_id:, sql:) <-
     fact_where_cond(pipeline_id:, rule_id:, sql:)
 where_cond(pipeline_id:, rule_id:, sql:) <-
@@ -1065,9 +1214,9 @@ where_cond(pipeline_id:, rule_id:, sql:) <-
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:, aggregated: false)
 */
 CREATE MATERIALIZED VIEW where_cond AS
-    SELECT DISTINCT sql_where_cond.pipeline_id, sql_where_cond.rule_id, sql_where_cond.sql
-    FROM sql_where_cond
-    UNION
+    -- SELECT DISTINCT sql_where_cond.pipeline_id, sql_where_cond.rule_id, sql_where_cond.sql
+    -- FROM sql_where_cond
+    -- UNION
     SELECT DISTINCT fact_where_cond.pipeline_id, fact_where_cond.rule_id, fact_where_cond.sql
     FROM fact_where_cond
     UNION
@@ -1625,7 +1774,7 @@ substituted_param_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:) <-
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
     (expr_type = 'array_expr') or (expr_type = 'dict_expr')
     sql := `CAST({{expr_sql}} AS VARIANT)`
-*/
+*/  
 CREATE MATERIALIZED VIEW substituted_param_expr AS
     SELECT DISTINCT
         rule_param.pipeline_id,

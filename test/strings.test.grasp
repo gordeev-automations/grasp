@@ -1,0 +1,5 @@
+fact(a: "Peter", b: "Podolski")
+
+hash_rule(a:, b:, hash:) <-
+	fact(a:, b:)
+	hash := md5(`salt {{a}} {{b}}`)

@@ -68,7 +68,7 @@ CREATE MATERIALIZED VIEW "error:match_right_expr_unresolved" AS
 /*
 error:invalid_aggr_expr(pipeline_id:, rule_id:, expr_id:) <-
     fncall_expr(pipeline_id:, rule_id:, expr_id:, aggregated: true)
-    not aggr_expr_matching_signature(pipeline_id:, rule_id:, expr_id:)
+    not fncall_expr_matching_signature(pipeline_id:, rule_id:, expr_id:, aggregated: true)
 */
 CREATE MATERIALIZED VIEW "error:invalid_aggr_expr" AS
     SELECT DISTINCT
@@ -79,10 +79,11 @@ CREATE MATERIALIZED VIEW "error:invalid_aggr_expr" AS
     WHERE fncall_expr.aggregated
     AND NOT EXISTS (
         SELECT 1
-        FROM aggr_expr_matching_signature
-        WHERE fncall_expr.pipeline_id = aggr_expr_matching_signature.pipeline_id
-        AND fncall_expr.rule_id = aggr_expr_matching_signature.rule_id
-        AND fncall_expr.expr_id = aggr_expr_matching_signature.expr_id
+        FROM fncall_expr_matching_signature
+        WHERE fncall_expr.pipeline_id = fncall_expr_matching_signature.pipeline_id
+        AND fncall_expr.rule_id = fncall_expr_matching_signature.rule_id
+        AND fncall_expr.expr_id = fncall_expr_matching_signature.expr_id
+        AND fncall_expr_matching_signature.aggregated
     );
 
 /*
@@ -218,6 +219,15 @@ error:var_bound_twice_via_match(
 ) <-
     # TODO
 */
+
+/*
+TODO: errors to check
+
+* make sure that only vars used in fact args have maybe_null_prefix
+* make sure that variables with names NULL, false, true are never bound
+
+*/
+
 
 /*
 error(pipeline_id:, error_type: "unbound_var_in_negative_fact") <-

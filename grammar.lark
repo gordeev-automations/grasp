@@ -15,17 +15,21 @@ fact: IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
 negated_fact: "not" _WS_INLINE+ IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
 match_stmt: expr _WS_INLINE+ ":=" _WS_INLINE+ expr
 
-expr: MAYBE_NULL_PREFIX? IDENTIFIER ("::" TYPE)? | NUMBER | ESCAPED_STRING | aggregated_expr | binop_expr | dict_expr | array_expr
-binop_expr: expr _WS_INLINE+ SPACED_BINOP _WS_INLINE+ expr
-    | expr _WS_INLINE+ CMP_OP _WS_INLINE+ expr
+expr: MAYBE_NULL_PREFIX? IDENTIFIER ("::" TYPE)? | NUMBER | ESCAPED_STRING | INTERPOLATED_STRING | aggregated_expr | funcall_expr | binop_expr | dict_expr | array_expr
+binop_expr: expr _WS_INLINE+ CMP_OP _WS_INLINE+ expr
 aggregated_expr: IDENTIFIER "<" _WS_INLINE* (fn_args _WS_INLINE*)? ">"
+funcall_expr: IDENTIFIER "(" _WS_INLINE* (fn_args _WS_INLINE*)? ")"
 dict_expr: "{" _WS* kv_args? _WS* ("," _WS*)? "}"
 array_expr: "[" _WS* (array_element (_WS* "," _WS* array_element)* (_WS* "," _WS*)?)? "]"
 array_element: "*" IDENTIFIER -> asterisk_var | expr
 
+_STRING_INNER: /.*?/
+_STRING_ESC_INNER: _STRING_INNER /(?<!\\)(\\\\)*?/
+INTERPOLATED_STRING : "`" _STRING_ESC_INNER "`"
+ESCAPED_STRING : "\"" _STRING_ESC_INNER "\""
+
 MAYBE_NULL_PREFIX: "?"
 CMP_OP: "=" | ">" | "<" | ">=" | "<=" | "!="
-SPACED_BINOP: "is"
 IDENTIFIER: (LETTER|"_") ("_"|LETTER|DIGIT)* (":" LETTER ("_"|LETTER|DIGIT)*)?
 TYPE: UCASE_LETTER+
 
@@ -34,4 +38,4 @@ _WS: WS
 _WS_INLINE: WS_INLINE
 _NEWLINE: NEWLINE
 
-%import common (LETTER, UCASE_LETTER, DIGIT, NUMBER, ESCAPED_STRING, WS, WS_INLINE, NEWLINE)
+%import common (LETTER, UCASE_LETTER, DIGIT, NUMBER, WS, WS_INLINE, NEWLINE)

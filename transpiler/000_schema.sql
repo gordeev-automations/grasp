@@ -132,6 +132,18 @@ CREATE TABLE str_expr (
     end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
+CREATE TABLE str_template_expr (
+    pipeline_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    expr_id TEXT NOT NULL,
+    template TEXT ARRAY NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
+) WITH ('materialized' = 'true');
+
 CREATE TABLE var_expr (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
@@ -153,6 +165,18 @@ CREATE TABLE null_expr (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
     expr_id TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
+) WITH ('materialized' = 'true');
+
+CREATE TABLE bool_expr (
+    pipeline_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    expr_id TEXT NOT NULL,
+    value BOOLEAN NOT NULL,
 
     start_line INTEGER NOT NULL,
     start_column INTEGER NOT NULL,
