@@ -322,7 +322,6 @@ CREATE TABLE body_expr (
 CREATE TABLE body_sql_cond (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
-    cond_id TEXT NOT NULL,
     sql_expr_id TEXT NOT NULL,
 
     start_line INTEGER NOT NULL,

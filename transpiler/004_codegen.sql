@@ -53,31 +53,31 @@ sql_expr_template_part_with_substitution(pipeline_id:, rule_id:, expr_id:, part:
     sql_expr_template_part(pipeline_id:, rule_id:, expr_id:, part:, index:)
     not (part ~ "{{[a-z_][a-zA-Z0-9_]*}}")
 */
--- DECLARE RECURSIVE VIEW sql_expr_template_part_with_substitution (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, part TEXT, "index" INTEGER);
--- CREATE MATERIALIZED VIEW sql_expr_template_part_with_substitution AS
---     SELECT DISTINCT
---         sql_expr_template_part.pipeline_id,
---         sql_expr_template_part.rule_id,
---         sql_expr_template_part.expr_id,
---         canonical_var_bound_sql.sql AS part,
---         sql_expr_template_part."index"
---     FROM sql_expr_template_part
---     JOIN canonical_var_bound_sql
---         ON sql_expr_template_part.pipeline_id = canonical_var_bound_sql.pipeline_id
---         AND sql_expr_template_part.rule_id = canonical_var_bound_sql.rule_id
---         AND SUBSTRING(sql_expr_template_part.part FROM 3 FOR (CHAR_LENGTH(sql_expr_template_part.part)-4)) = canonical_var_bound_sql.var_name
---     WHERE sql_expr_template_part.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$'
+DECLARE RECURSIVE VIEW sql_expr_template_part_with_substitution (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, part TEXT, "index" INTEGER);
+CREATE MATERIALIZED VIEW sql_expr_template_part_with_substitution AS
+    SELECT DISTINCT
+        sql_expr_template_part.pipeline_id,
+        sql_expr_template_part.rule_id,
+        sql_expr_template_part.expr_id,
+        canonical_var_bound_sql.sql AS part,
+        sql_expr_template_part."index"
+    FROM sql_expr_template_part
+    JOIN canonical_var_bound_sql
+        ON sql_expr_template_part.pipeline_id = canonical_var_bound_sql.pipeline_id
+        AND sql_expr_template_part.rule_id = canonical_var_bound_sql.rule_id
+        AND SUBSTRING(sql_expr_template_part.part FROM 3 FOR (CHAR_LENGTH(sql_expr_template_part.part)-4)) = canonical_var_bound_sql.var_name
+    WHERE sql_expr_template_part.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$'
 
---     UNION
+    UNION
 
---     SELECT DISTINCT
---         sql_expr_template_part.pipeline_id,
---         sql_expr_template_part.rule_id,
---         sql_expr_template_part.expr_id,
---         sql_expr_template_part.part,
---         sql_expr_template_part."index"
---     FROM sql_expr_template_part
---     WHERE NOT (sql_expr_template_part.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$');
+    SELECT DISTINCT
+        sql_expr_template_part.pipeline_id,
+        sql_expr_template_part.rule_id,
+        sql_expr_template_part.expr_id,
+        sql_expr_template_part.part,
+        sql_expr_template_part."index"
+    FROM sql_expr_template_part
+    WHERE NOT (sql_expr_template_part.part RLIKE '^\{\{[a-zA-Z_][A-Za-z0-9_:]*\}\}$');
 
 /*
 sql_expr_substitution_status(pipeline_id:, rule_id:, expr_id:, count: count<>) <-
@@ -96,21 +96,22 @@ sql_expr_substitution_status(pipeline_id:, rule_id:, expr_id:, count: count<>) <
 /*
 sql_expr_all_vars_are_bound(pipeline_id:, rule_id:, expr_id:) <-
     sql_expr(pipeline_id:, rule_id:, expr_id:, template:)
-    sql_expr_substitution_status(pipeline_id:, rule_id:, expr_id:, count:)
-    count = array_length(template)
+    sql_expr_template_part_with_substitution(pipeline_id:, rule_id:, expr_id:)
+    count<> = array_length(template)
 */
--- DECLARE RECURSIVE VIEW sql_expr_all_vars_are_bound (pipeline_id TEXT, rule_id TEXT, expr_id TEXT);
--- CREATE MATERIALIZED VIEW sql_expr_all_vars_are_bound AS
---     SELECT DISTINCT
---         sql_expr.pipeline_id,
---         sql_expr.rule_id,
---         sql_expr.expr_id
---     FROM sql_expr
---     JOIN sql_expr_substitution_status
---         ON sql_expr.pipeline_id = sql_expr_substitution_status.pipeline_id
---         AND sql_expr.rule_id = sql_expr_substitution_status.rule_id
---         AND sql_expr.expr_id = sql_expr_substitution_status.expr_id
---     WHERE sql_expr_substitution_status.count = ARRAY_LENGTH(sql_expr.template);
+DECLARE RECURSIVE VIEW sql_expr_all_vars_are_bound (pipeline_id TEXT, rule_id TEXT, expr_id TEXT);
+CREATE MATERIALIZED VIEW sql_expr_all_vars_are_bound AS
+    SELECT DISTINCT
+        sql_expr.pipeline_id,
+        sql_expr.rule_id,
+        sql_expr.expr_id
+    FROM sql_expr
+    JOIN sql_expr_template_part_with_substitution
+        ON sql_expr.pipeline_id = sql_expr_template_part_with_substitution.pipeline_id
+        AND sql_expr.rule_id = sql_expr_template_part_with_substitution.rule_id
+        AND sql_expr.expr_id = sql_expr_template_part_with_substitution.expr_id
+    GROUP BY sql_expr.pipeline_id, sql_expr.rule_id, sql_expr.expr_id, sql_expr.template
+    HAVING COUNT(*) = ARRAY_LENGTH(sql_expr.template);
 
 /*
 substituted_sql_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
@@ -118,19 +119,19 @@ substituted_sql_expr(pipeline_id:, rule_id:, expr_id:, sql:) <-
     sql_expr_template_part_with_substitution(pipeline_id:, rule_id:, expr_id:, part:, index:)
     sql := join(array<part, order_by: [index]>, "")
 */
--- DECLARE RECURSIVE VIEW substituted_sql_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT);
--- CREATE MATERIALIZED VIEW substituted_sql_expr AS
---     SELECT DISTINCT
---         a.pipeline_id,
---         a.rule_id,
---         a.expr_id,
---         ARRAY_TO_STRING(ARRAY_AGG(b.part ORDER BY b."index"), '') AS sql
---     FROM sql_expr_all_vars_are_bound AS a
---     JOIN sql_expr_template_part_with_substitution AS b
---         ON a.pipeline_id = b.pipeline_id
---         AND a.rule_id = b.rule_id
---         AND a.expr_id = b.expr_id
---     GROUP BY a.pipeline_id, a.rule_id, a.expr_id;
+DECLARE RECURSIVE VIEW substituted_sql_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT);
+CREATE MATERIALIZED VIEW substituted_sql_expr AS
+    SELECT DISTINCT
+        a.pipeline_id,
+        a.rule_id,
+        a.expr_id,
+        ARRAY_TO_STRING(ARRAY_AGG(b.part ORDER BY b."index"), '') AS sql
+    FROM sql_expr_all_vars_are_bound AS a
+    JOIN sql_expr_template_part_with_substitution AS b
+        ON a.pipeline_id = b.pipeline_id
+        AND a.rule_id = b.rule_id
+        AND a.expr_id = b.expr_id
+    GROUP BY a.pipeline_id, a.rule_id, a.expr_id;
 
 DECLARE RECURSIVE VIEW substituted_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, expr_type TEXT, sql TEXT, aggregated BOOLEAN);
 
@@ -1058,21 +1059,21 @@ CREATE MATERIALIZED VIEW var_bound_via_match AS
 
 
 /*
-sql_where_cond(pipeline_id:, rule_id:, cond_id:, sql:) <-
-    body_sql_cond(pipeline_id:, rule_id:, cond_id:, sql_expr_id: expr_id)
+sql_where_cond(pipeline_id:, rule_id:, sql_expr_id: expr_id, sql:) <-
+    body_sql_cond(pipeline_id:, rule_id:, sql_expr_id: expr_id)
     substituted_sql_expr(pipeline_id:, rule_id:, expr_id:, sql:)
 */
--- CREATE MATERIALIZED VIEW sql_where_cond AS
---     SELECT DISTINCT
---         body_sql_cond.pipeline_id,
---         body_sql_cond.rule_id,
---         body_sql_cond.cond_id,
---         substituted_sql_expr.sql
---     FROM body_sql_cond
---     JOIN substituted_sql_expr
---         ON body_sql_cond.pipeline_id = substituted_sql_expr.pipeline_id
---         AND body_sql_cond.rule_id = substituted_sql_expr.rule_id
---         AND body_sql_cond.sql_expr_id = substituted_sql_expr.expr_id;
+CREATE MATERIALIZED VIEW sql_where_cond AS
+    SELECT DISTINCT
+        body_sql_cond.pipeline_id,
+        body_sql_cond.rule_id,
+        body_sql_cond.sql_expr_id,
+        substituted_sql_expr.sql
+    FROM body_sql_cond
+    JOIN substituted_sql_expr
+        ON body_sql_cond.pipeline_id = substituted_sql_expr.pipeline_id
+        AND body_sql_cond.rule_id = substituted_sql_expr.rule_id
+        AND body_sql_cond.sql_expr_id = substituted_sql_expr.expr_id;
 
 /*
 output_json_type_cast_to(expr_type: "int_expr", output_type: "DECIMAL")
@@ -1203,8 +1204,8 @@ CREATE MATERIALIZED VIEW match_where_cond AS
     WHERE match_oexpr.pattern_expr_type NOT IN ('var_expr', 'dict_expr', 'array_expr');
 
 /*
-#where_cond(pipeline_id:, rule_id:, sql:) <-
-#    sql_where_cond(pipeline_id:, rule_id:, sql:)
+where_cond(pipeline_id:, rule_id:, sql:) <-
+    sql_where_cond(pipeline_id:, rule_id:, sql:)
 where_cond(pipeline_id:, rule_id:, sql:) <-
     fact_where_cond(pipeline_id:, rule_id:, sql:)
 where_cond(pipeline_id:, rule_id:, sql:) <-
@@ -1214,9 +1215,9 @@ where_cond(pipeline_id:, rule_id:, sql:) <-
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:, aggregated: false)
 */
 CREATE MATERIALIZED VIEW where_cond AS
-    -- SELECT DISTINCT sql_where_cond.pipeline_id, sql_where_cond.rule_id, sql_where_cond.sql
-    -- FROM sql_where_cond
-    -- UNION
+    SELECT DISTINCT sql_where_cond.pipeline_id, sql_where_cond.rule_id, sql_where_cond.sql
+    FROM sql_where_cond
+    UNION
     SELECT DISTINCT fact_where_cond.pipeline_id, fact_where_cond.rule_id, fact_where_cond.sql
     FROM fact_where_cond
     UNION
@@ -2100,11 +2101,20 @@ CREATE MATERIALIZED VIEW table_sql AS
 pipeline_tables_sql(pipeline_id:, table_name:, sql_lines:) <-
     first_table(pipeline_id:, table_name:, order: 0)
     table_sql(pipeline_id:, table_name:, sql_lines:)
+pipeline_tables_sql(pipeline_id:, table_name:, sql_lines: []) <-
+    first_table(pipeline_id:, table_name:, order: 0)
+    not table_sql(pipeline_id:, table_name:)
 pipeline_tables_sql(pipeline_id:, table_name:, sql_lines:) <-
     pipeline_tables_sql(pipeline_id:, table_name: prev_table_name, sql_lines: prev_sql_lines)
     next_table(pipeline_id:, prev_table_name:, next_table_name: table_name)
     table_sql(pipeline_id:, table_name:, sql_lines: next_sql_lines)
     sql_lines := [*prev_sql_lines, *next_sql_lines]
+pipeline_tables_sql(pipeline_id:, table_name:, sql_lines:) <-
+    # if table_sql does not exist for next table, just skip it
+    # it might be defined somewhere outside, in pure SQL.
+    pipeline_tables_sql(pipeline_id:, table_name: prev_table_name, sql_lines:)
+    next_table(pipeline_id:, prev_table_name:, next_table_name: table_name)
+    not table_sql(pipeline_id:, table_name:)
 */
 DECLARE RECURSIVE VIEW pipeline_tables_sql (pipeline_id TEXT, table_name TEXT, sql_lines TEXT ARRAY);
 CREATE MATERIALIZED VIEW pipeline_tables_sql AS
@@ -2121,6 +2131,21 @@ CREATE MATERIALIZED VIEW pipeline_tables_sql AS
     UNION
 
     SELECT DISTINCT
+        first_table.pipeline_id,
+        first_table.table_name,
+        ARRAY() AS sql_lines
+    FROM first_table
+    WHERE first_table."order" = 0
+    AND NOT EXISTS (
+        SELECT 1
+        FROM table_sql
+        WHERE table_sql.pipeline_id = first_table.pipeline_id
+        AND table_sql.table_name = first_table.table_name
+    )
+
+    UNION
+
+    SELECT DISTINCT
         next_table.pipeline_id,
         next_table.next_table_name,
         ARRAY_CONCAT(
@@ -2133,7 +2158,24 @@ CREATE MATERIALIZED VIEW pipeline_tables_sql AS
         AND next_table.prev_table_name = pipeline_tables_sql.table_name
     JOIN table_sql
         ON next_table.pipeline_id = table_sql.pipeline_id
-        AND next_table.next_table_name = table_sql.table_name;
+        AND next_table.next_table_name = table_sql.table_name
+    
+    UNION
+
+    SELECT DISTINCT
+        pipeline_tables_sql.pipeline_id,
+        next_table.next_table_name AS table_name,
+        pipeline_tables_sql.sql_lines
+    FROM pipeline_tables_sql
+    JOIN next_table
+        ON next_table.pipeline_id = pipeline_tables_sql.pipeline_id
+        AND next_table.prev_table_name = pipeline_tables_sql.table_name
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM table_sql
+        WHERE table_sql.pipeline_id = next_table.pipeline_id
+        AND table_sql.table_name = next_table.next_table_name
+    );
 
 /*
 full_pipeline_sql(pipeline_id:, sql_lines:) <-

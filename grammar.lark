@@ -5,12 +5,12 @@ rule: IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")" _WS_INLINE* "<-" _WS_INL
     | IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
 
 kv_args: kv_arg (_WS* "," _WS* kv_arg)*
-kv_arg: IDENTIFIER ":" | IDENTIFIER ":" _WS+ expr
+kv_arg: IDENTIFIER ":" | (IDENTIFIER|ESCAPED_STRING) ":" _WS+ expr
 val_args: expr (_WS* "," _WS* expr)*
 fn_args: val_args (_WS* "," _WS* kv_args)? | kv_args
 
 multiline_body: (("\t" body_stmt _WS_INLINE* _NEWLINE) | ("\t" _WS_INLINE* _NEWLINE) | _LINE_COMMENT | _NEWLINE)+
-body_stmt: negated_fact | fact | match_stmt | expr
+body_stmt: negated_fact | fact | match_stmt | expr | SQL_COND
 fact: IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
 negated_fact: "not" _WS_INLINE+ IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
 match_stmt: expr _WS_INLINE+ ":=" _WS_INLINE+ expr
@@ -20,9 +20,10 @@ binop_expr: expr _WS_INLINE+ CMP_OP _WS_INLINE+ expr
 aggregated_expr: IDENTIFIER "<" _WS_INLINE* (fn_args _WS_INLINE*)? ">"
 funcall_expr: IDENTIFIER "(" _WS_INLINE* (fn_args _WS_INLINE*)? ")"
 dict_expr: "{" _WS* kv_args? _WS* ("," _WS*)? "}"
-array_expr: "[" _WS* (array_element (_WS* "," _WS* array_element)* (_WS* "," _WS*)?)? "]"
+array_expr: "[" _WS* (array_element (_WS* "," _WS* array_element)* (_WS* ("," _WS*)?))? "]"
 array_element: "*" IDENTIFIER -> asterisk_var | expr
 
+SQL_COND: "SQL`" _STRING_ESC_INNER "`"
 _STRING_INNER: /.*?/
 _STRING_ESC_INNER: _STRING_INNER /(?<!\\)(\\\\)*?/
 INTERPOLATED_STRING : "`" _STRING_ESC_INNER "`"

@@ -63,6 +63,9 @@ CREATE MATERIALIZED VIEW table_dependency AS
 table_without_dependencies(pipeline_id:, table_name:) <-
     rule(pipeline_id:, table_name:, rule_id:)
     not body_fact(pipeline_id:, rule_id:)
+table_without_dependencies(pipeline_id:, table_name:) <-
+    body_fact(pipeline_id:, table_name:)
+    not rule(pipeline_id:, table_name:)
 */
 CREATE MATERIALIZED VIEW table_without_dependencies AS
     SELECT DISTINCT
@@ -74,6 +77,17 @@ CREATE MATERIALIZED VIEW table_without_dependencies AS
         FROM body_fact
         WHERE rule.pipeline_id = body_fact.pipeline_id
         AND rule.rule_id = body_fact.rule_id
+    )
+    UNION
+    SELECT DISTINCT
+        body_fact.pipeline_id,
+        body_fact.table_name
+    FROM body_fact
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM rule
+        WHERE body_fact.pipeline_id = rule.pipeline_id
+        AND body_fact.table_name = rule.table_name
     );
 
 /*

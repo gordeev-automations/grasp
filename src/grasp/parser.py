@@ -216,6 +216,37 @@ def records_from_dict_arg(arg, rule_id, dict_id, idgen):
                     }]
                 }
             )
+        case Tree(data=Token(type='RULE', value='kv_arg'), children=[
+            Token(type='ESCAPED_STRING', value=str_key),
+            Tree(data=Token(type='RULE', value='expr'), children=children),
+        ]):
+            expr_id = f'ex{next(idgen)}'
+            key = str_key[1:-1]
+            match children:
+                case [expr]:
+                    expr_type, expr_records = records_from_expr(expr, rule_id, expr_id, idgen)
+                case [expr, Token(type='TYPE', value=assigned_type)]:
+                    expr_type, expr_records = records_from_expr(
+                        expr, rule_id, expr_id, idgen, assigned_type=assigned_type)
+                case _:
+                    raise Exception(f"Invalid arg expr {arg}")
+            return merge_records(
+                expr_records,
+                {
+                    'dict_entry': [{
+                        'rule_id': rule_id,
+                        'dict_id': dict_id,
+                        'key': key,
+                        'expr_id': expr_id,
+                        'expr_type': expr_type,
+
+                        'start_line': arg.meta.container_line,
+                        'start_column': arg.meta.container_column,
+                        'end_line': arg.meta.container_end_line,
+                        'end_column': arg.meta.container_end_column,
+                    }]
+                }
+            )
         case _:
             raise Exception(f"Invalid arg expr {arg}")
 
@@ -276,7 +307,8 @@ def records_from_array_element(element, index, rule_id, array_id, idgen):
         case _:
             raise Exception(f"Invalid array element {element}")
 
-
+def sql_str_into_template_array(s):
+    return re.split(r'(\{\{[a-zA-Z_][a-zA-Z0-9_]*\}\})', s)
 
 def records_from_expr(expr, rule_id, expr_id, idgen, assigned_type=None):
     match expr:
@@ -347,7 +379,7 @@ def records_from_expr(expr, rule_id, expr_id, idgen, assigned_type=None):
                 }]
             }
         case Token(type='INTERPOLATED_STRING', value=value):
-            template = re.split(r'(\{\{[a-zA-Z_][a-zA-Z0-9_]*\}\})', value[1:-1])
+            template = sql_str_into_template_array(value[1:-1])
             return 'str_template_expr', {
                 'str_template_expr': [{
                     'rule_id': rule_id,
@@ -604,6 +636,27 @@ def records_from_body_stmt(index, stmt, rule_id, idgen):
                     }]
                 }
             ])
+        case Token(type='SQL_COND', value=sql_cond_expr):
+            template = sql_str_into_template_array(sql_cond_expr[4:-1])
+            expr_id = f'ex{next(idgen)}'
+            return {
+                'sql_expr': [{
+                    'rule_id': rule_id, 'expr_id': expr_id, 'template': template,
+
+                    'start_line': stmt.line,
+                    'start_column': stmt.column,
+                    'end_line': stmt.end_line,
+                    'end_column': stmt.end_column,
+                }],
+                'body_sql_cond': [{
+                    'rule_id': rule_id, 'sql_expr_id': expr_id,
+
+                    'start_line': stmt.line,
+                    'start_column': stmt.column,
+                    'end_line': stmt.end_line,
+                    'end_column': stmt.end_column,
+                }]
+            }
         case _:
             raise Exception(f"Invalid body stmt {stmt}")    
 
