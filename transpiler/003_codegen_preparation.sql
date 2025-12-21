@@ -423,19 +423,13 @@ CREATE MATERIALIZED VIEW table_first_rule AS
     GROUP BY rule.pipeline_id, rule.table_name;
 
 /*
-table_next_rule(pipeline_id:, table_name:, prev_rule_id:, next_rule_id:) <-
+table_next_rule1(pipeline_id:, table_name:, prev_rule_id:, next_rule_id:) <-
     table_first_rule(pipeline_id:, table_name:, rule_id: prev_rule_id)
     rule(pipeline_id:, table_name:, rule_id:)
     next_rule_id := min<rule_id>
     prev_rule_id < rule_id
-table_next_rule(pipeline_id:, table_name:, prev_rule_id:, next_rule_id:) <-
-    table_next_rule(pipeline_id:, table_name:, next_rule_id: prev_rule_id)
-    rule(pipeline_id:, table_name:, rule_id:)
-    next_rule_id := min<rule_id>
-    prev_rule_id < rule_id
 */
-DECLARE RECURSIVE VIEW table_next_rule (pipeline_id TEXT, table_name TEXT, prev_rule_id TEXT, next_rule_id TEXT);
-CREATE MATERIALIZED VIEW table_next_rule AS
+CREATE MATERIALIZED VIEW table_next_rule1 AS
     SELECT DISTINCT
         table_first_rule.pipeline_id,
         table_first_rule.table_name,
@@ -446,7 +440,25 @@ CREATE MATERIALIZED VIEW table_next_rule AS
         ON rule.pipeline_id = table_first_rule.pipeline_id
         AND rule.table_name = table_first_rule.table_name
     WHERE table_first_rule.rule_id < rule.rule_id
-    GROUP BY table_first_rule.pipeline_id, table_first_rule.table_name, table_first_rule.rule_id
+    GROUP BY table_first_rule.pipeline_id, table_first_rule.table_name, table_first_rule.rule_id;
+
+/*
+table_next_rule(pipeline_id:, table_name:, prev_rule_id:, next_rule_id:) <-
+    table_next_rule1(pipeline_id:, table_name:, prev_rule_id:, next_rule_id:)
+table_next_rule(pipeline_id:, table_name:, prev_rule_id:, next_rule_id:) <-
+    table_next_rule(pipeline_id:, table_name:, next_rule_id: prev_rule_id)
+    rule(pipeline_id:, table_name:, rule_id:)
+    next_rule_id := min<rule_id>
+    prev_rule_id < rule_id
+*/
+DECLARE RECURSIVE VIEW table_next_rule (pipeline_id TEXT, table_name TEXT, prev_rule_id TEXT, next_rule_id TEXT);
+CREATE MATERIALIZED VIEW table_next_rule AS
+    SELECT DISTINCT
+        table_next_rule1.pipeline_id,
+        table_next_rule1.table_name,
+        table_next_rule1.prev_rule_id,
+        table_next_rule1.next_rule_id
+    FROM table_next_rule1
 
     UNION
 

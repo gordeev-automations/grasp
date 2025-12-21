@@ -535,8 +535,8 @@ substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "binop_expr", sql:
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "var_expr", sql:, aggregated:) <-
     var_expr(pipeline_id:, rule_id:, expr_id:, var_name:)
     canonical_var_bound_sql(pipeline_id:, rule_id:, var_name:, sql:, aggregated:)
-substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "fncall_expr", sql:, aggregated: true) <-
-    substituted_fncall_expr(pipeline_id:, rule_id:, expr_id:, sql:)
+substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "fncall_expr", sql:, aggregated:) <-
+    substituted_fncall_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "array_expr", sql:, aggregated:) <-
     substituted_array_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "dict_expr", sql:, aggregated:) <-
@@ -587,7 +587,7 @@ CREATE MATERIALIZED VIEW substituted_expr AS
 
     UNION
 
-    SELECT e.pipeline_id, e.rule_id, e.expr_id, 'fncall_expr' AS expr_type, e.sql, true AS aggregated
+    SELECT e.pipeline_id, e.rule_id, e.expr_id, 'fncall_expr' AS expr_type, e.sql, e.aggregated
     FROM substituted_fncall_expr AS e
 
     UNION
