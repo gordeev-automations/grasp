@@ -531,7 +531,7 @@ CREATE MATERIALIZED VIEW array_expr_length AS
 /*
 sql_expr_template_part(pipeline_id:, rule_id:, expr_id:, part:, index:) <-
     sql_expr(pipeline_id:, rule_id:, expr_id:, template:)
-    (element: part, index:) <- template
+    (part, index) := *template
 */
 CREATE MATERIALIZED VIEW sql_expr_template_part AS
     SELECT DISTINCT

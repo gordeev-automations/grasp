@@ -618,6 +618,45 @@ def records_from_body_stmt(index, stmt, rule_id, idgen):
                     'end_column': stmt.meta.container_end_column,
                 }] },
             ])
+        case Tree(data=Token(type='RULE', value='match_stmt'), children=[
+            Tree(data=Token(type='RULE', value='unnest_pattern'), children=[
+                Tree(data=Token(type='RULE', value='expr'), children=[left_expr1]),
+            ]),
+            Token(type='ID_PREFIX', value=prefix),
+            Tree(data=Token(type='RULE', value='expr'), children=[
+                Token(type='IDENTIFIER', value=var_name),
+            ]),
+        ]):
+            unnest_id = f'un{next(idgen)}'
+            left_expr1_id = f'ex{next(idgen)}'
+            right_expr_id = f'ex{next(idgen)}'
+            left_expr1_type, left_expr1_records = records_from_expr(
+                left_expr1, rule_id, left_expr1_id, idgen)
+            return functools.reduce(merge_records, [
+                left_expr1_records,
+                {
+                    'var_expr': [{
+                        'rule_id': rule_id, 'expr_id': right_expr_id, 'var_name': var_name,
+                        'maybe_null_prefix': False,
+
+                        'start_line': stmt.children[2].children[0].line,
+                        'start_column': stmt.children[2].children[0].column,
+                        'end_line': stmt.children[2].children[0].end_line,
+                        'end_column': stmt.children[2].children[0].end_column,
+                    }],
+                    'body_unnest': [{
+                        'rule_id': rule_id, 'unnest_id': unnest_id,
+                        'left_expr1_id': left_expr1_id, 'left_expr1_type': left_expr1_type,
+                        'right_expr_prefix': prefix,
+                        'right_expr_id': right_expr_id, 'right_expr_type': 'var_expr',
+
+                        'start_line': stmt.meta.container_line,
+                        'start_column': stmt.meta.container_column,
+                        'end_line': stmt.meta.container_end_line,
+                        'end_column': stmt.meta.container_end_column,
+                    }]
+                }
+            ])
         case Tree(data=Token(type='RULE', value='expr'), children=[expr]):
             # if it is not a fact and not match,
             # then it must be an expression, that must evaluate to bool

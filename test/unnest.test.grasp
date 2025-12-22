@@ -1,0 +1,6 @@
+arr_data(arr: ["a", "b", "c"])
+
+unnested(elt:) <-
+	arr_data(arr:)
+	(elt) := *arr
+

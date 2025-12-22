@@ -307,6 +307,26 @@ CREATE TABLE body_match (
     end_column INTEGER NOT NULL
 ) WITH ('materialized' = 'true');
 
+CREATE TABLE body_unnest (
+    pipeline_id TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    unnest_id TEXT NOT NULL,
+
+    left_expr1_id TEXT NOT NULL,
+    left_expr1_type TEXT NOT NULL,
+    left_expr2_id TEXT, -- second index param is optional for arrays
+    left_expr2_type TEXT,
+
+    right_expr_prefix TEXT NOT NULL,
+    right_expr_id TEXT NOT NULL,
+    right_expr_type TEXT NOT NULL,
+
+    start_line INTEGER NOT NULL,
+    start_column INTEGER NOT NULL,
+    end_line INTEGER NOT NULL,
+    end_column INTEGER NOT NULL
+) WITH ('materialized' = 'true');
+
 CREATE TABLE body_expr (
     pipeline_id TEXT NOT NULL,
     rule_id TEXT NOT NULL,
