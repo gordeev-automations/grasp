@@ -1323,9 +1323,10 @@ CREATE MATERIALIZED VIEW neg_fact_where_cond AS
                 ('    WHERE ' || ARRAY_AGG('"' || fact_alias.alias || '"."' || fact_arg.key || '" = ' || substituted_expr.sql)[1])
             ],
             TRANSFORM(
-                GRASP_TEXT_ARRAY_DROP_LEFT(
+                GRASP_TEXT_ARRAY_DROP_SIDES(
                     ARRAY_AGG('"' || fact_alias.alias || '"."' || fact_arg.key || '" = ' || substituted_expr.sql),
-                    CAST(1 AS INTEGER UNSIGNED)),
+                    CAST(1 AS INTEGER UNSIGNED),
+                    CAST(0 AS INTEGER UNSIGNED)),
                 x -> '        AND ' || x),
             ARRAY['  )']
         ) AS sql_lines
@@ -1375,7 +1376,10 @@ CREATE MATERIALIZED VIEW neg_fact_where_cond_concatenated AS
         ARRAY_CONCAT(
             neg_fact_where_cond_concatenated.sql_lines,
             ARRAY['    AND ' || neg_fact_where_cond.sql_lines[1]],
-            GRASP_TEXT_ARRAY_DROP_LEFT(neg_fact_where_cond.sql_lines, CAST(1 AS INTEGER UNSIGNED))
+            GRASP_TEXT_ARRAY_DROP_SIDES(
+                neg_fact_where_cond.sql_lines,
+                CAST(1 AS INTEGER UNSIGNED),
+                CAST(0 AS INTEGER UNSIGNED))
         ) AS sql_lines
     FROM neg_fact_where_cond_concatenated
     JOIN adjacent_facts
@@ -1437,7 +1441,10 @@ CREATE MATERIALIZED VIEW full_where_cond_sql AS
         neg_facts_where_conds_full.rule_id,
         ARRAY_CONCAT(
             ARRAY['  WHERE ' || neg_facts_where_conds_full.sql_lines[1]],
-            GRASP_TEXT_ARRAY_DROP_LEFT(neg_facts_where_conds_full.sql_lines, CAST(1 AS INTEGER UNSIGNED))
+            GRASP_TEXT_ARRAY_DROP_SIDES(
+                neg_facts_where_conds_full.sql_lines,
+                CAST(1 AS INTEGER UNSIGNED),
+                CAST(0 AS INTEGER UNSIGNED))
         ) AS sql_lines
     FROM neg_facts_where_conds_full
     WHERE NOT EXISTS (
@@ -1455,7 +1462,10 @@ CREATE MATERIALIZED VIEW full_where_cond_sql AS
         ARRAY_CONCAT(
             ARRAY['  WHERE ' || ARRAY_AGG(where_cond.sql)[1]],
             TRANSFORM(
-                GRASP_TEXT_ARRAY_DROP_LEFT(ARRAY_AGG(where_cond.sql), CAST(1 AS INTEGER UNSIGNED)),
+                GRASP_TEXT_ARRAY_DROP_SIDES(
+                    ARRAY_AGG(where_cond.sql),
+                    CAST(1 AS INTEGER UNSIGNED),
+                    CAST(0 AS INTEGER UNSIGNED)),
                 (sql_line) -> '    AND ' || sql_line)
         ) AS sql_lines
     FROM where_cond
@@ -1474,7 +1484,10 @@ CREATE MATERIALIZED VIEW full_where_cond_sql AS
         neg_facts_where_conds_full.rule_id,
         ARRAY_CONCAT(
             ARRAY['  WHERE ' || neg_facts_where_conds_full.sql_lines[1]],
-            GRASP_TEXT_ARRAY_DROP_LEFT(neg_facts_where_conds_full.sql_lines, CAST(1 AS INTEGER UNSIGNED)),
+            GRASP_TEXT_ARRAY_DROP_SIDES(
+                neg_facts_where_conds_full.sql_lines,
+                CAST(1 AS INTEGER UNSIGNED),
+                CAST(0 AS INTEGER UNSIGNED)),
             TRANSFORM(
                 ARRAY_AGG(where_cond.sql),
                 (sql_line) -> '    AND ' || sql_line)
@@ -1556,7 +1569,10 @@ CREATE MATERIALIZED VIEW having_cond_sql AS
         ARRAY_CONCAT(
             ARRAY['  HAVING ' || ARRAY_AGG(having_cond.sql)[1]],
             TRANSFORM(
-                GRASP_TEXT_ARRAY_DROP_LEFT(ARRAY_AGG(having_cond.sql), CAST(1 AS INTEGER UNSIGNED)),
+                GRASP_TEXT_ARRAY_DROP_SIDES(
+                    ARRAY_AGG(having_cond.sql),
+                    CAST(1 AS INTEGER UNSIGNED),
+                    CAST(0 AS INTEGER UNSIGNED)),
                 (sql_line) -> '    AND ' || sql_line)
         ) AS sql_lines
     FROM having_cond
@@ -1663,9 +1679,10 @@ CREATE MATERIALIZED VIEW rule_join_sql AS
             ARRAY['  JOIN "' || output_table_name.output_table_name || '" AS "' || next_fact_alias.alias || '"'],
             ARRAY['    ON ' || ARRAY_AGG(var_join.sql)[1]],
             TRANSFORM(
-                GRASP_TEXT_ARRAY_DROP_LEFT(
+                GRASP_TEXT_ARRAY_DROP_SIDES(
                     ARRAY_AGG(var_join.sql),
-                    CAST(1 AS INTEGER UNSIGNED)),
+                    CAST(1 AS INTEGER UNSIGNED),
+                    CAST(0 AS INTEGER UNSIGNED)),
                 x -> '    AND ' || x)
         ) AS sql_lines
     FROM rule_join_sql AS prev_rule_join_sql
@@ -2227,8 +2244,9 @@ CREATE MATERIALIZED VIEW schema_table_sql AS
         ARRAY_CONCAT(
             ARRAY['CREATE TABLE "' || output_table_name.output_table_name || '" ('],
             TRANSFORM(
-                GRASP_TEXT_ARRAY_DROP_RIGHT(
+                GRASP_TEXT_ARRAY_DROP_SIDES(
                     ARRAY_AGG(schema_table_column_sql.sql),
+                    CAST(0 AS INTEGER UNSIGNED),
                     CAST(1 AS INTEGER UNSIGNED)),
                 x -> '  ' || x || ','),
             ARRAY['  ' || ARRAY_AGG(schema_table_column_sql.sql)[ARRAY_LENGTH(ARRAY_AGG(schema_table_column_sql.sql))]],
