@@ -138,7 +138,7 @@ DECLARE RECURSIVE VIEW substituted_expr (pipeline_id TEXT, rule_id TEXT, expr_id
 /*
 str_template_part(pipeline_id:, rule_id:, expr_id:, part:, index:) <-
     str_template_expr(pipeline_id:, rule_id:, expr_id:, template:)
-    (element: part, index:) <- template
+    (part, index) := *template
 */
 CREATE MATERIALIZED VIEW str_template_part AS
     SELECT DISTINCT
@@ -640,8 +640,39 @@ CREATE MATERIALIZED VIEW match_right_expr_sql AS
 
 
 
-
-
+/*
+array_unnest_join_sql_lines(
+    pipeline_id:, rule_id:, unnest_id:, sql_lines:,
+    element_alias:, index_alias: NULL,
+) <-
+    body_unnest(
+        pipeline_id:, rule_id:, unnest_id:, right_expr_prefix: "*",
+        left_expt2_id: NULL, left_expr2_type: NULL,
+        right_expr_id:, right_expr_type:)
+    substituted_expr(
+        pipeline_id:, rule_id:, sql: right_expr_sql, aggregated: false,
+        expr_id: right_expr_id, expr_type: right_expr_type)
+    alias := unnest_id
+    element_alias := `"{{alias}}".arr_element`
+    sql_lines := [
+        `  CROSS JOIN UNNEST(CAST({{right_expr_sql}} AS VARIANT ARRAY)) AS "{{alias}}" (arr_element)`
+    ]
+*/
+DECLARE RECURSIVE VIEW array_unnest_join_sql_lines (pipeline_id TEXT, rule_id TEXT, unnest_id TEXT, sql_lines TEXT ARRAY, element_alias TEXT, index_alias TEXT);
+CREATE MATERIALIZED VIEW array_unnest_join_sql_lines AS
+    SELECT DISTINCT
+        a.pipeline_id, a.rule_id, a.unnest_id,
+        ARRAY[
+            ('  CROSS JOIN UNNEST(CAST(' || b.sql || ' AS VARIANT ARRAY)) AS "' || a.unnest_id || '" (arr_element)')
+        ] AS sql_lines,
+        ('"' || a.unnest_id || '".arr_element') AS element_alias,
+        NULL AS index_alias
+    FROM body_unnest AS a
+    JOIN substituted_expr AS b
+        ON a.pipeline_id = b.pipeline_id
+        AND a.rule_id = b.rule_id
+        AND a.right_expr_id = b.expr_id
+        AND a.right_expr_type = b.expr_type;
 
 
 
@@ -844,8 +875,37 @@ match_oexpr(
         AND array_entry.expr_id = var_expr.expr_id
         AND var_expr.special_prefix = '*'
     )
-    AND match_oexpr_array_drop_sides.pattern_expr_type = 'array_expr';
-
+    AND match_oexpr_array_drop_sides.pattern_expr_type = 'array_expr'
+    UNION
+/*
+# matching element pattern on the left side in array unnest expression
+# (element) := *any-expr()
+match_oexpr(
+    pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type:,
+    match_id:, sql:, aggregated: false,
+) <-
+    array_unnest_join_sql_lines(
+        pipeline_id:, rule_id:, unnest_id:,
+        element_alias: sql, index_alias: NULL)
+    body_unnest(
+        pipeline_id:, rule_id:, unnest_id: match_id, right_expr_prefix: "*",
+        left_expr1_id: pattern_expr_id, left_expr1_type: pattern_expr_type)
+*/
+    SELECT DISTINCT
+        array_unnest_join_sql_lines.pipeline_id,
+        array_unnest_join_sql_lines.rule_id,
+        body_unnest.left_expr1_id AS pattern_expr_id,
+        body_unnest.left_expr1_type AS pattern_expr_type,
+        body_unnest.unnest_id AS match_id,
+        array_unnest_join_sql_lines.element_alias AS sql,
+        false AS aggregated
+    FROM array_unnest_join_sql_lines
+    JOIN body_unnest
+        ON array_unnest_join_sql_lines.pipeline_id = body_unnest.pipeline_id
+        AND array_unnest_join_sql_lines.rule_id = body_unnest.rule_id
+        AND array_unnest_join_sql_lines.unnest_id = body_unnest.unnest_id
+    WHERE array_unnest_join_sql_lines.index_alias IS NULL
+    AND body_unnest.right_expr_prefix = '*';
 
 
 
@@ -1627,6 +1687,51 @@ CREATE MATERIALIZED VIEW rule_join_sql AS
     GROUP BY next_fact_alias.pipeline_id, next_fact_alias.rule_id, next_fact_alias.fact_id, prev_rule_join_sql.sql_lines, output_table_name.output_table_name, next_fact_alias.alias;
 
 /*
+unnest_join_sql_lines(pipeline_id:, rule_id:, unnest_id:, sql_lines:) <-
+    first_unnest(pipeline_id:, rule_id:, unnest_id:)
+    array_unnest_join_sql_lines(pipeline_id:, rule_id:, unnest_id:, sql_lines:)
+unnest_join_sql_lines(pipeline_id:, rule_id:, unnest_id:, sql_lines:) <-
+    unnest_join_sql_lines(
+        pipeline_id:, rule_id:, unnest_id: prev_unnest_id, sql_lines: prev_sql_lines)
+    adjacent_unnests(pipeline_id:, rule_id:, prev_unnest_id:, next_unnest_id: unnest_id)
+    array_unnest_join_sql_lines(pipeline_id:, rule_id:, unnest_id:, sql_lines: next_sql_lines)
+    sql_lines := [
+        *prev_sql_lines,
+        *next_sql_lines,
+    ]
+*/
+DECLARE RECURSIVE VIEW unnest_join_sql_lines (pipeline_id TEXT, rule_id TEXT, unnest_id TEXT, sql_lines TEXT ARRAY);
+CREATE MATERIALIZED VIEW unnest_join_sql_lines AS
+    SELECT DISTINCT
+        first_unnest.pipeline_id,
+        first_unnest.rule_id,
+        first_unnest.unnest_id,
+        array_unnest_join_sql_lines.sql_lines
+    FROM first_unnest
+    JOIN array_unnest_join_sql_lines
+        ON first_unnest.pipeline_id = array_unnest_join_sql_lines.pipeline_id
+        AND first_unnest.rule_id = array_unnest_join_sql_lines.rule_id
+        AND first_unnest.unnest_id = array_unnest_join_sql_lines.unnest_id
+    UNION
+    SELECT DISTINCT
+        unnest_join_sql_lines.pipeline_id,
+        unnest_join_sql_lines.rule_id,
+        array_unnest_join_sql_lines.unnest_id,
+        ARRAY_CONCAT(
+            array_unnest_join_sql_lines.sql_lines,
+            unnest_join_sql_lines.sql_lines
+        ) AS sql_lines
+    FROM unnest_join_sql_lines
+    JOIN adjacent_unnests
+        ON unnest_join_sql_lines.pipeline_id = adjacent_unnests.pipeline_id
+        AND unnest_join_sql_lines.rule_id = adjacent_unnests.rule_id
+        AND unnest_join_sql_lines.unnest_id = adjacent_unnests.prev_unnest_id
+    JOIN array_unnest_join_sql_lines
+        ON adjacent_unnests.pipeline_id = array_unnest_join_sql_lines.pipeline_id
+        AND adjacent_unnests.rule_id = array_unnest_join_sql_lines.rule_id
+        AND adjacent_unnests.next_unnest_id = array_unnest_join_sql_lines.unnest_id;
+
+/*
 unaggregated_param_expr(pipeline_id:, rule_id:, key:, expr_id:, expr_type:, sql:) <-
     rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:, aggregated: false)
@@ -1765,6 +1870,73 @@ CREATE MATERIALIZED VIEW join_sql AS
     );
 
 /*
+unnest_join_sql(pipeline_id:, rule_id:, sql_lines: []) <-
+    rule(pipeline_id:, rule_id:)
+    not body_unnest(pipeline_id:, rule_id:)
+unnest_join_sql(pipeline_id:, rule_id:, sql_lines:) <-
+    unnest_join_sql_lines(pipeline_id:, rule_id:, unnest_id:, sql_lines:)
+    not adjacent_unnests(pipeline_id:, rule_id:, prev_unnest_id: unnest_id)
+    not adjacent_unnests(pipeline_id:, rule_id:, next_unnest_id: unnest_id)
+unnest_join_sql(pipeline_id:, rule_id:, sql_lines:) <-
+    adjacent_unnests(pipeline_id:, rule_id:, next_unnest_id: last_unnest_id)
+    not adjacent_unnests(pipeline_id:, rule_id:, prev_unnest_id: last_unnest_id)
+    unnest_join_sql_lines(pipeline_id:, rule_id:, unnest_id: last_unnest_id, sql_lines:)
+*/
+CREATE MATERIALIZED VIEW unnest_join_sql AS
+    SELECT DISTINCT
+        rule.pipeline_id,
+        rule.rule_id,
+        CAST(ARRAY() AS TEXT ARRAY) AS sql_lines
+    FROM rule
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM body_unnest
+        WHERE rule.pipeline_id = body_unnest.pipeline_id
+        AND rule.rule_id = body_unnest.rule_id
+    )
+
+    UNION
+
+    SELECT DISTINCT
+        unnest_join_sql_lines.pipeline_id,
+        unnest_join_sql_lines.rule_id,
+        unnest_join_sql_lines.sql_lines
+    FROM unnest_join_sql_lines
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM adjacent_unnests
+        WHERE unnest_join_sql_lines.pipeline_id = adjacent_unnests.pipeline_id
+        AND unnest_join_sql_lines.rule_id = adjacent_unnests.rule_id
+        AND adjacent_unnests.prev_unnest_id = unnest_join_sql_lines.unnest_id
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM adjacent_unnests
+        WHERE unnest_join_sql_lines.pipeline_id = adjacent_unnests.pipeline_id
+        AND unnest_join_sql_lines.rule_id = adjacent_unnests.rule_id
+        AND adjacent_unnests.next_unnest_id = unnest_join_sql_lines.unnest_id
+    )
+
+    UNION
+
+    SELECT DISTINCT
+        unnest_join_sql_lines.pipeline_id,
+        unnest_join_sql_lines.rule_id,
+        unnest_join_sql_lines.sql_lines
+    FROM unnest_join_sql_lines
+    JOIN adjacent_unnests AS a
+        ON unnest_join_sql_lines.pipeline_id = a.pipeline_id
+        AND unnest_join_sql_lines.rule_id = a.rule_id
+        AND unnest_join_sql_lines.unnest_id = a.next_unnest_id
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM adjacent_unnests
+        WHERE unnest_join_sql_lines.pipeline_id = adjacent_unnests.pipeline_id
+        AND unnest_join_sql_lines.rule_id = adjacent_unnests.rule_id
+        AND adjacent_unnests.prev_unnest_id = a.next_unnest_id
+    );
+
+/*
 substituted_param_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:) <-
     rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:)
@@ -1822,10 +1994,12 @@ select_sql(pipeline_id:, rule_id:, sql_lines:) <-
     having_cond_sql(pipeline_id:, rule_id:, sql_lines: having_sql_lines)
     grouped_by_sql(pipeline_id:, rule_id:, sql_lines: group_by_sql_lines)
     join_sql(pipeline_id:, rule_id:, sql_lines: join_sql_lines)
+    unnest_join_sql(pipeline_id:, rule_id:, sql_lines: unnest_join_sql_lines)
     columns_sql := join(array<`{{expr_sql}} AS "{{key}}"`, by: key>, ", ")
     sql_lines := [
         `  SELECT DISTINCT {{columns_sql}}`,
         *join_sql_lines,
+        *unnest_join_sql_lines,
         *where_sql_lines,
         *group_by_sql_lines,
         *having_sql_lines,
@@ -1861,6 +2035,7 @@ CREATE MATERIALIZED VIEW select_sql AS
         ARRAY_CONCAT(
             ARRAY['  SELECT DISTINCT ' || ARRAY_TO_STRING(ARRAY_AGG(substituted_param_expr.sql || ' AS "' || rule_param.key || '"' ORDER BY rule_param.key), ', ')],
             join_sql.sql_lines,
+            unnest_join_sql.sql_lines,
             full_where_cond_sql.sql_lines,
             grouped_by_sql.sql_lines,
             having_cond_sql.sql_lines
@@ -1883,7 +2058,10 @@ CREATE MATERIALIZED VIEW select_sql AS
     JOIN join_sql
         ON rule_param.pipeline_id = join_sql.pipeline_id
         AND rule_param.rule_id = join_sql.rule_id
-    GROUP BY rule_param.pipeline_id, rule_param.rule_id, join_sql.sql_lines, full_where_cond_sql.sql_lines, grouped_by_sql.sql_lines, having_cond_sql.sql_lines;
+    JOIN unnest_join_sql
+        ON rule_param.pipeline_id = unnest_join_sql.pipeline_id
+        AND rule_param.rule_id = unnest_join_sql.rule_id
+    GROUP BY rule_param.pipeline_id, rule_param.rule_id, join_sql.sql_lines, unnest_join_sql.sql_lines, full_where_cond_sql.sql_lines, grouped_by_sql.sql_lines, having_cond_sql.sql_lines;
 
 /*
 table_view_sql(pipeline_id:, table_name:, rule_id:, sql_lines:) <-

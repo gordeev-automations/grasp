@@ -351,6 +351,40 @@ CREATE MATERIALIZED VIEW adjacent_facts AS
     GROUP BY prev_fact.pipeline_id, prev_fact.rule_id, prev_fact.negated, prev_fact.fact_id;
 
 /*
+first_unnest(pipeline_id:, rule_id:, unnest_id: min<unnest_id>) <-
+    body_unnest(pipeline_id:, rule_id:, unnest_id:)
+*/
+CREATE MATERIALIZED VIEW first_unnest AS
+    SELECT DISTINCT
+        body_unnest.pipeline_id,
+        body_unnest.rule_id,
+        MIN(body_unnest.unnest_id) AS unnest_id
+    FROM body_unnest
+    GROUP BY body_unnest.pipeline_id, body_unnest.rule_id;
+
+/*
+adjacent_unnests(
+    pipeline_id:, rule_id:,
+    prev_unnest_id:, next_unnest_id: min<next_unnest_id>
+) <-
+    body_unnest(pipeline_id:, rule_id:, unnest_id: prev_unnest_id)
+    body_unnest(pipeline_id:, rule_id:, unnest_id: next_unnest_id)
+    prev_unnest_id < next_unnest_id
+*/
+CREATE MATERIALIZED VIEW adjacent_unnests AS
+    SELECT DISTINCT
+        prev_unnest.pipeline_id,
+        prev_unnest.rule_id,
+        prev_unnest.unnest_id AS prev_unnest_id,
+        MIN(next_unnest.unnest_id) AS next_unnest_id
+    FROM body_unnest AS prev_unnest
+    JOIN body_unnest AS next_unnest
+        ON prev_unnest.pipeline_id = next_unnest.pipeline_id
+        AND prev_unnest.rule_id = next_unnest.rule_id
+    WHERE prev_unnest.unnest_id < next_unnest.unnest_id
+    GROUP BY prev_unnest.pipeline_id, prev_unnest.rule_id, prev_unnest.unnest_id;
+
+/*
 last_fact_alias(pipeline_id:, rule_id:, fact_id:, negated:) <-
     adjacent_facts(pipeline_id:, rule_id:, negated:, next_fact_id: fact_id)
     not adjacent_facts(pipeline_id:, rule_id:, negated:, prev_fact_id: fact_id)
