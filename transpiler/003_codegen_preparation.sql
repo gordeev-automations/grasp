@@ -1089,8 +1089,17 @@ var_bound_in_fact(
     fact_oexpr(
         pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type: "var_expr",
         sql:, negated: false, fact_index:, fact_id:)
-    var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, var_name:)
+    var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, var_name:, assigned_type: NULL)
     false = (var_name ~ "^_.*$")
+var_bound_in_fact(
+    pipeline_id:, rule_id:, negated:, var_name:, fact_index:, fact_id:, sql:
+) <-
+    fact_oexpr(
+        pipeline_id:, rule_id:, pattern_expr_id:, pattern_expr_type: "var_expr",
+        sql: expr_sql, negated: false, fact_index:, fact_id:)
+    var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, var_name:, assigned_type:)
+    false = (var_name ~ "^_.*$")
+    sql := `CAST({{expr_sql}} AS {{assigned_type}})`
 var_bound_in_fact(
     pipeline_id:, rule_id:, negated:, var_name:, fact_index:, fact_id:, sql:
 ) <-
@@ -1118,6 +1127,26 @@ CREATE MATERIALIZED VIEW var_bound_in_fact AS
         AND fact_oexpr.pattern_expr_id = var_expr.expr_id
     WHERE NOT var_expr.var_name RLIKE '^_.*$'
     AND NOT fact_oexpr.negated
+    AND var_expr.assigned_type IS NULL
+
+    UNION
+
+    SELECT DISTINCT
+        fact_oexpr.pipeline_id,
+        fact_oexpr.rule_id,
+        fact_oexpr.negated,
+        var_expr.var_name,
+        fact_oexpr.fact_index,
+        fact_oexpr.fact_id,
+        ('CAST(' || fact_oexpr.sql || ' AS ' || var_expr.assigned_type || ')') AS sql
+    FROM fact_oexpr
+    JOIN var_expr
+        ON fact_oexpr.pipeline_id = var_expr.pipeline_id
+        AND fact_oexpr.rule_id = var_expr.rule_id
+        AND fact_oexpr.pattern_expr_id = var_expr.expr_id
+    WHERE NOT var_expr.var_name RLIKE '^_.*$'
+    AND NOT fact_oexpr.negated
+    AND var_expr.assigned_type IS NOT NULL
 
     UNION
 

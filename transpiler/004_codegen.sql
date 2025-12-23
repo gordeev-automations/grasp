@@ -1076,7 +1076,14 @@ var_bound_via_match(pipeline_id:, rule_id:, match_id:, var_name:, sql:, aggregat
         pipeline_id:, rule_id:,
         pattern_expr_id:, pattern_expr_type: "var_expr",
         match_id:, sql:, aggregated:)
-    var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, var_name:)
+    var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, var_name:, assigned_type: NULL)
+var_bound_via_match(pipeline_id:, rule_id:, match_id:, var_name:, sql:, aggregated:) <-
+    match_oexpr(
+        pipeline_id:, rule_id:,
+        pattern_expr_id:, pattern_expr_type: "var_expr",
+        match_id:, sql: expr_sql, aggregated:)
+    var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, var_name:, assigned_type:)
+    sql := `CAST({{expr_sql}} AS {{assigned_type}})`
 var_bound_via_match(pipeline_id:, rule_id:, match_id:, var_name:, sql:, aggregated:) <-
     match_oexpr_array_drop_sides(
         pipeline_id:, rule_id:, pattern_expr_type: "var_expr",
@@ -1099,6 +1106,24 @@ CREATE MATERIALIZED VIEW var_bound_via_match AS
         AND match_oexpr.rule_id = var_expr.rule_id
         AND match_oexpr.pattern_expr_id = var_expr.expr_id
     WHERE match_oexpr.pattern_expr_type = 'var_expr'
+    AND var_expr.assigned_type IS NULL
+
+    UNION
+
+    SELECT DISTINCT
+        match_oexpr.pipeline_id,
+        match_oexpr.rule_id,
+        match_oexpr.match_id,
+        var_expr.var_name,
+        ('CAST(' || match_oexpr.sql || ' AS ' || var_expr.assigned_type || ')') AS sql,
+        match_oexpr.aggregated
+    FROM match_oexpr
+    JOIN var_expr
+        ON match_oexpr.pipeline_id = var_expr.pipeline_id
+        AND match_oexpr.rule_id = var_expr.rule_id
+        AND match_oexpr.pattern_expr_id = var_expr.expr_id
+    WHERE match_oexpr.pattern_expr_type = 'var_expr'
+    AND var_expr.assigned_type IS NOT NULL
 
     UNION
 
@@ -1365,14 +1390,19 @@ CREATE MATERIALIZED VIEW neg_fact_where_cond_concatenated AS
         neg_fact_where_cond.rule_id,
         neg_fact_where_cond.fact_id,
         neg_fact_where_cond.sql_lines
-    FROM neg_fact_where_cond
+    FROM first_fact_alias
+    JOIN neg_fact_where_cond
+        ON first_fact_alias.pipeline_id = neg_fact_where_cond.pipeline_id
+        AND first_fact_alias.rule_id = neg_fact_where_cond.rule_id
+        AND first_fact_alias.fact_id = neg_fact_where_cond.fact_id
+    WHERE first_fact_alias.negated
 
     UNION
 
     SELECT DISTINCT
         neg_fact_where_cond_concatenated.pipeline_id,
         neg_fact_where_cond_concatenated.rule_id,
-        neg_fact_where_cond_concatenated.fact_id,
+        neg_fact_where_cond.fact_id,
         ARRAY_CONCAT(
             neg_fact_where_cond_concatenated.sql_lines,
             ARRAY['    AND ' || neg_fact_where_cond.sql_lines[1]],
