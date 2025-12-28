@@ -17,8 +17,8 @@ match_stmt: expr _WS_INLINE+ ":=" _WS_INLINE+ expr
     | unnest_pattern _WS_INLINE+ ":=" _WS_INLINE+ ID_PREFIX expr
 unnest_pattern: "(" _WS_AND_COMMENTS* expr _WS_AND_COMMENTS* ("," _WS_AND_COMMENTS* expr _WS_AND_COMMENTS*)? ")"
 
-expr: MAYBE_NULL_PREFIX? IDENTIFIER ("::" TYPE)? | NUMBER | ESCAPED_STRING | INTERPOLATED_STRING | aggregated_expr | funcall_expr | binop_expr | dict_expr | array_expr
-binop_expr: expr _WS_INLINE+ CMP_OP _WS_INLINE+ expr
+expr: MAYBE_NULL_PREFIX? IDENTIFIER ("::" TYPE)? | NUMBER | ESCAPED_STRING | INTERPOLATED_STRING | aggregated_expr | funcall_expr | binop_expr | dict_expr | array_expr | "(" _WS_AND_COMMENTS* expr _WS_AND_COMMENTS* ")"
+binop_expr: expr _WS_INLINE+ BIN_OP _WS_INLINE+ expr
 aggregated_expr: IDENTIFIER "<" _WS_INLINE* (fn_args _WS_INLINE*)? ">"
 funcall_expr: IDENTIFIER "(" _WS_INLINE* (fn_args _WS_INLINE*)? ")"
 dict_expr: "{" _WS_AND_COMMENTS* kv_args? _WS_AND_COMMENTS* ("," _WS_AND_COMMENTS*)? "}"
@@ -33,7 +33,7 @@ INTERPOLATED_STRING : "`" _STRING_ESC_INNER "`"
 ESCAPED_STRING : "\"" _STRING_ESC_INNER "\""
 
 MAYBE_NULL_PREFIX: "?"
-CMP_OP: "=" | ">" | "<" | ">=" | "<=" | "!="
+BIN_OP: "=" | ">" | "<" | ">=" | "<=" | "!=" | "or" | "and" | "~"
 IDENTIFIER: (LETTER|"_") ("_"|LETTER|DIGIT)* (":" LETTER ("_"|LETTER|DIGIT)*)?
 TYPE: UCASE_LETTER+
 

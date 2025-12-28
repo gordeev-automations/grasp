@@ -1,18 +1,15 @@
 import os
 import sys
 import asyncio
+import hashlib
 
 import json5
 import json
 import aiohttp
 
-from grasp.util import testcase_dest_path, recompile_pipeline, do_need_to_recompile_pipeline, wait_till_pipeline_compiled, ensure_pipeline_started, testcase_expected_records_path, adhoc_query, testcase_key, testcase_table_inputs_paths, insert_records, wait_till_input_tokens_processed
+from grasp.util import testcase_dest_path, recompile_pipeline, do_need_to_recompile_pipeline, wait_till_pipeline_compiled, ensure_pipeline_started, testcase_expected_records_path, adhoc_query, testcase_key, testcase_table_inputs_paths, insert_records, wait_till_input_tokens_processed, root_dir, read_transpiler_sql, read_transpiler_udf_rs
 
 
-
-def root_dir():
-    curr_dir = os.path.abspath(os.path.dirname(__file__))
-    return f'{curr_dir}/../../..'
 
 def value_to_sql(v):
     if isinstance(v, str):
@@ -55,6 +52,10 @@ async def main(testcases_paths):
     # curr_dir = os.path.abspath(os.path.dirname(__file__))
     cache_dir = f'{root_dir()}/test/.grasp_cache'
 
+    transpiler_sql = read_transpiler_sql()
+    udf_rs = read_transpiler_udf_rs()
+    transpiler_hash = hashlib.sha256((transpiler_sql + udf_rs).encode('utf-8')).hexdigest()[:10]
+
     # prefer deterministic order
     testcases_paths.sort()
 
@@ -64,7 +65,7 @@ async def main(testcases_paths):
     testsuite_sql += open(udf_sql_preface_path, 'r').read()
 
     for testcase_path in testcases_paths:
-        dest_path = testcase_dest_path(testcase_path, cache_dir)
+        dest_path = testcase_dest_path(testcase_path, cache_dir, transpiler_hash)
         if not os.path.exists(dest_path):
             raise Exception(f"{dest_path} does not exist")
         

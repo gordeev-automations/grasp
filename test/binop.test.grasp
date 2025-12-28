@@ -1,0 +1,15 @@
+
+available_yt_dlp_format(
+    yt_video_code: "123", format_id: "95", ext: "mp4",
+    resolution: "1280x720", format_note: "[en] (original)")
+
+# just to check that this syntax compiles
+preferred_basic_yt_dlp_format(yt_video_code:, format_id:) <-
+	available_yt_dlp_format(yt_video_code:, format_id:, ext: "mp4", resolution:)
+	format_id = "95"
+	(resolution = "1280x720") or (resolution = "720x1218")
+preferred_basic_yt_dlp_format(yt_video_code:, format_id:) <-
+	available_yt_dlp_format(yt_video_code:, format_id:, ext: "mp4", resolution:, format_note:)
+	format_id ~ "95\-.*"
+	format_note ~ "\(original\)"
+	(resolution = "1280x720") or (resolution = "720x1218")

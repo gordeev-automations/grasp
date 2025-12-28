@@ -453,26 +453,30 @@ CREATE MATERIALIZED VIEW substituted_dict_expr AS
     GROUP BY a.pipeline_id, a.rule_id, a.expr_id;
 
 /*
-binop_sql(op: "is", sql: "IS")
 binop_sql(op: ">=", sql: ">=")
 binop_sql(op: ">", sql: ">")
 binop_sql(op: "<=", sql: "<=")
 binop_sql(op: "<", sql: "<")
 binop_sql(op: "=", sql: "=")
 binop_sql(op: "!=", sql: "!=")
+binop_sql(op: "~", sql: "RLIKE")
+binop_sql(op: "or", sql: "OR")
+binop_sql(op: "and", sql: "AND")
 */
 CREATE MATERIALIZED VIEW binop_sql AS
     SELECT DISTINCT
         b.op,
         b.sql
     FROM (VALUES
-        ('is', 'IS'),
         ('>=', '>='),
         ('>', '>'),
         ('<=', '<='),
         ('<', '<'),
         ('=', '='),
-        ('!=', '!=')
+        ('!=', '!='),
+        ('~', 'RLIKE'),
+        ('or', 'OR'),
+        ('and', 'AND')
     ) AS b (op, sql);
 
 /*

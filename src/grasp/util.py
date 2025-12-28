@@ -6,6 +6,10 @@ import asyncio
 
 
 
+def root_dir():
+    curr_dir = os.path.abspath(os.path.dirname(__file__))
+    return f'{curr_dir}/../..'
+
 async def fetch_pipeline_status(session, pipeline_name):
     url = f'/v0/pipelines/{pipeline_name}'
     async with session.get(url, params={'selector': 'status'}) as resp:
@@ -200,13 +204,15 @@ def testcase_schema_path(testcase_path):
     dirpath = os.path.dirname(testcase_path)
     return f'{dirpath}/{testcase_key(testcase_path)}.schema.json5'
 
-def testcase_dest_path(testcase_path, cache_dir):
+def testcase_dest_path(testcase_path, cache_dir, transpiler_hash):
     testcase_hash = file_hash(testcase_path)
     schema_path = testcase_schema_path(testcase_path)
     if os.path.exists(schema_path):
         schema_hash = file_hash(schema_path)
-        return f'{cache_dir}/{testcase_key(testcase_path)}.{testcase_hash}-{schema_hash}.sql'
-    return f'{cache_dir}/{testcase_key(testcase_path)}.{testcase_hash}.sql'
+        key = f"{transpiler_hash}-{testcase_hash}--{schema_hash}"
+        return f'{cache_dir}/{testcase_key(testcase_path)}.{key}.sql'
+    key = f"{transpiler_hash}-{testcase_hash}"
+    return f'{cache_dir}/{testcase_key(testcase_path)}.{key}.sql'
 
 def testcase_expected_records_path(testcase_path):
     dirpath = os.path.dirname(testcase_path)
@@ -223,5 +229,16 @@ def testcase_table_inputs_paths(testcase_path):
         result[table_name] = p
     return result
 
-def need_to_transpile_testcase(testcase_path, cache_dir):
-    return not os.path.exists(testcase_dest_path(testcase_path, cache_dir))
+def need_to_transpile_testcase(testcase_path, cache_dir, transpiler_hash):
+    return not os.path.exists(testcase_dest_path(testcase_path, cache_dir, transpiler_hash))
+
+def read_transpiler_sql():
+    # select all *.sql files from transpiler/ directory
+    # sort by name. Read in order, concatenate content and return
+    sql_files = [f for f in os.listdir(f'{root_dir()}/transpiler') if f.endswith('.sql')]
+    sql_files.sort()
+    sql_files = [open(f'{root_dir()}/transpiler/{f}', 'r').read() for f in sql_files]
+    return '\n'.join(sql_files)
+
+def read_transpiler_udf_rs():
+    return open(f'{root_dir()}/transpiler/udf.rs', 'r').read()

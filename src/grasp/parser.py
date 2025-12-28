@@ -323,6 +323,11 @@ def sql_str_into_template_array(s):
 
 def records_from_expr(expr, rule_id, expr_id, idgen, assigned_type=None, maybe_null_prefix=False):
     match expr:
+        case Tree(data=Token(type='RULE', value='expr'), children=[wrapped_expr]):
+            expr_type, records = records_from_expr(
+                wrapped_expr, rule_id, expr_id, idgen,
+                assigned_type=assigned_type, maybe_null_prefix=maybe_null_prefix)
+            return expr_type, records
         case Token(type='NUMBER', value=value):
             return 'int_expr', {
                 'int_expr': [{
@@ -405,9 +410,9 @@ def records_from_expr(expr, rule_id, expr_id, idgen, assigned_type=None, maybe_n
             }
         case Tree(data=Token(type='RULE', value='binop_expr'), children=[
             Tree(data=Token(type='RULE', value='expr'), children=[left_expr]),
-            Token(type=op_type, value=op),
+            Token(type='BIN_OP', value=op),
             Tree(data=Token(type='RULE', value='expr'), children=[right_expr]),
-        ]) if op_type in ['SPACED_BINOP', 'CMP_OP']:
+        ]):
             left_expr_id = f'ex{next(idgen)}'
             right_expr_id = f'ex{next(idgen)}'
             left_expr_type, left_expr_records = records_from_expr(left_expr, rule_id, left_expr_id, idgen)

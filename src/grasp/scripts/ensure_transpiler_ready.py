@@ -4,23 +4,9 @@ import sys
 import asyncio
 import aiohttp
 
-from grasp.util import recompile_pipeline, do_need_to_recompile_pipeline, wait_till_pipeline_compiled, ensure_pipeline_started
+from grasp.util import recompile_pipeline, do_need_to_recompile_pipeline, wait_till_pipeline_compiled, ensure_pipeline_started, read_transpiler_sql, read_transpiler_udf_rs
 
 
-def root_dir():
-    curr_dir = os.path.abspath(os.path.dirname(__file__))
-    return f'{curr_dir}/../../..'
-
-def read_transpiler_sql():
-    # select all *.sql files from transpiler/ directory
-    # sort by name. Read in order, concatenate content and return
-    sql_files = [f for f in os.listdir(f'{root_dir()}/transpiler') if f.endswith('.sql')]
-    sql_files.sort()
-    sql_files = [open(f'{root_dir()}/transpiler/{f}', 'r').read() for f in sql_files]
-    return '\n'.join(sql_files)
-
-def read_transpiler_udf_rs():
-    return open(f'{root_dir()}/transpiler/udf.rs', 'r').read()
 
 async def ensure_transpiler_pipeline_is_ready(session, pipeline_name):
     # curr_dir = os.path.abspath(os.path.dirname(__file__))

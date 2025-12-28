@@ -7,13 +7,9 @@ import aiohttp
 import json5
 
 import grasp.parser as parser
-from grasp.util import testcase_key, insert_records, file_hash, need_to_transpile_testcase, adhoc_query, testcase_dest_path, testcase_schema_path, wait_till_input_tokens_processed, start_transaction, commit_transaction
+from grasp.util import testcase_key, insert_records, file_hash, need_to_transpile_testcase, adhoc_query, testcase_dest_path, testcase_schema_path, wait_till_input_tokens_processed, start_transaction, commit_transaction, root_dir, read_transpiler_sql, read_transpiler_udf_rs
 
 
-
-def root_dir():
-    curr_dir = os.path.abspath(os.path.dirname(__file__))
-    return f'{curr_dir}/../../..'
 
 async def fetch_output_sql_lines(session, pipeline_name, pipeline_id):
     sql = f"SELECT sql_lines FROM full_pipeline_sql WHERE pipeline_id = '{pipeline_id}'"
@@ -65,6 +61,10 @@ async def main(testcases_paths):
     feldera_url = 'http://localhost:8080'
     pipeline_name = 'grasp_transpiler'
 
+    transpiler_sql = read_transpiler_sql()
+    udf_rs = read_transpiler_udf_rs()
+    transpiler_hash = hashlib.sha256((transpiler_sql + udf_rs).encode('utf-8')).hexdigest()[:10]
+
     cache_dir = f'{root_dir()}/test/.grasp_cache'
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
@@ -76,9 +76,10 @@ async def main(testcases_paths):
         try:
             await start_transaction(session, pipeline_name)
             for testcase_path in testcases_paths:
-                if need_to_transpile_testcase(testcase_path, cache_dir):
+                if need_to_transpile_testcase(testcase_path, cache_dir, transpiler_hash):
                     # insert all inputs at once, so it would transpile in parallel
-                    (pipeline_id, tokens) = await enqueue_transpilation(testcase_path, pipeline_name, session)
+                    (pipeline_id, tokens) = await enqueue_transpilation(
+                        testcase_path, pipeline_name, session)
                     queued_tokens[testcase_path] = tokens
                     pipeline_ids[testcase_path] = pipeline_id
         finally:
@@ -91,7 +92,7 @@ async def main(testcases_paths):
 
         paths_without_errors = (set(testcases_paths) - set(with_errors.keys())) & set(pipeline_ids.keys())
         for testcase_path in paths_without_errors:
-            dest_path = testcase_dest_path(testcase_path, cache_dir)
+            dest_path = testcase_dest_path(testcase_path, cache_dir, transpiler_hash)
             pipeline_id = pipeline_ids[testcase_path]
             await write_output_sql(session, pipeline_name, pipeline_id, dest_path)
 
