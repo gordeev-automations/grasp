@@ -1377,6 +1377,7 @@ match_where_cond(pipeline_id:, rule_id:, match_id:, sql:) <-
     not body_match(
         pipeline_id:, rule_id:, match_id:,
         left_expr_id: pattern_expr_id, left_expr_type: "var_expr")
+    not var_expr(pipeline_id:, rule_id:, expr_id: pattern_expr_id, maybe_null_prefix: true)
     sql := `{{access_sql}} IS NOT NULL`
 match_where_cond(pipeline_id:, rule_id:, match_id:, sql:) <-
     match_oexpr(
@@ -1400,13 +1401,21 @@ CREATE MATERIALIZED VIEW match_where_cond AS
     FROM match_oexpr
     WHERE match_oexpr.pattern_expr_type = 'var_expr'
     AND NOT EXISTS (
-        SELECT *
+        SELECT 1
         FROM body_match
         WHERE match_oexpr.pipeline_id = body_match.pipeline_id
         AND match_oexpr.rule_id = body_match.rule_id
         AND match_oexpr.match_id = body_match.match_id
         AND body_match.left_expr_id = match_oexpr.pattern_expr_id
         AND body_match.left_expr_type = 'var_expr'
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM var_expr
+        WHERE match_oexpr.pipeline_id = var_expr.pipeline_id
+        AND match_oexpr.rule_id = var_expr.rule_id
+        AND match_oexpr.pattern_expr_id = var_expr.expr_id
+        AND var_expr.maybe_null_prefix
     )
 
     UNION
