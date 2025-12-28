@@ -2117,7 +2117,7 @@ substituted_param_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:) <-
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
     (expr_type = 'array_expr') or (expr_type = 'dict_expr') or (sql ~ "^ARRAY[") or (sql ~ "^MAP[") or (sql = "ARRAY()")) or (sql = "MAP()")
     sql := `CAST({{expr_sql}} AS VARIANT)`
-*/  
+*/
 CREATE MATERIALIZED VIEW substituted_param_expr AS
     SELECT DISTINCT
         rule_param.pipeline_id,

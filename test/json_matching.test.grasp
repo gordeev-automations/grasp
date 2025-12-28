@@ -22,7 +22,8 @@ buttons_after_three(buttons:) <-
 json_fields(important_ids:, chat_info:) <-
 	tg_update(
 		tg_update: {
-			update_id: update_id::BIGINT,
+			# add ? to skip NOT NULL check. Just to ensure that such syntax works
+			update_id: ?update_id::BIGINT,
 			message: {
 				message_id: message_id::BIGINT,
 				chat: chat_info}})

@@ -1,28 +1,28 @@
-start: _WS* _NEWLINE (rule | _WS_INLINE* _NEWLINE | _LINE_COMMENT)* _WS*
+start: _WS_AND_COMMENTS* (rule | _WS_AND_COMMENTS*)*
 
-rule: IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")" _WS_INLINE* "<-" _WS_INLINE* _NEWLINE multiline_body
-    | IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")" _WS_INLINE* "<-" _WS_INLINE* body_stmt
-    | IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
+rule: IDENTIFIER "(" _WS_AND_COMMENTS* kv_args? _WS_AND_COMMENTS* ("," _WS_AND_COMMENTS*)? ")" _WS_INLINE* "<-" _WS_INLINE* _NEWLINE multiline_body
+    | IDENTIFIER "(" _WS_AND_COMMENTS* kv_args? _WS_AND_COMMENTS* ("," _WS_AND_COMMENTS*)? ")" _WS_INLINE* "<-" _WS_INLINE* body_stmt
+    | IDENTIFIER "(" _WS_AND_COMMENTS* kv_args? _WS_AND_COMMENTS* ("," _WS_AND_COMMENTS*)? ")"
 
-kv_args: kv_arg (_WS* "," _WS* kv_arg)*
-kv_arg: IDENTIFIER ":" | (IDENTIFIER|ESCAPED_STRING) ":" _WS+ expr
-val_args: expr (_WS* "," _WS* expr)*
-fn_args: val_args (_WS* "," _WS* kv_args)? | kv_args
+kv_args: kv_arg (_WS_AND_COMMENTS* "," _WS_AND_COMMENTS* kv_arg)*
+kv_arg: IDENTIFIER ":" | (IDENTIFIER|ESCAPED_STRING) ":" _WS+ _WS_AND_COMMENTS* expr
+val_args: expr (_WS_AND_COMMENTS* "," _WS_AND_COMMENTS* expr)*
+fn_args: val_args (_WS_AND_COMMENTS* "," _WS_AND_COMMENTS* kv_args)? | kv_args
 
 multiline_body: (("\t" body_stmt _WS_INLINE* _NEWLINE) | ("\t" _WS_INLINE* _NEWLINE) | _LINE_COMMENT | _NEWLINE)+
 body_stmt: negated_fact | fact | match_stmt | expr | SQL_COND
-fact: IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
-negated_fact: "not" _WS_INLINE+ IDENTIFIER "(" _WS* kv_args? _WS* ("," _WS*)? ")"
+fact: IDENTIFIER "(" _WS_AND_COMMENTS* kv_args? _WS_AND_COMMENTS* ("," _WS_AND_COMMENTS*)? ")"
+negated_fact: "not" _WS_INLINE+ IDENTIFIER "(" _WS_AND_COMMENTS* kv_args? _WS_AND_COMMENTS* ("," _WS_AND_COMMENTS*)? ")"
 match_stmt: expr _WS_INLINE+ ":=" _WS_INLINE+ expr
     | unnest_pattern _WS_INLINE+ ":=" _WS_INLINE+ ID_PREFIX expr
-unnest_pattern: "(" _WS* expr _WS* ("," _WS* expr _WS*)? ")"
+unnest_pattern: "(" _WS_AND_COMMENTS* expr _WS_AND_COMMENTS* ("," _WS_AND_COMMENTS* expr _WS_AND_COMMENTS*)? ")"
 
 expr: MAYBE_NULL_PREFIX? IDENTIFIER ("::" TYPE)? | NUMBER | ESCAPED_STRING | INTERPOLATED_STRING | aggregated_expr | funcall_expr | binop_expr | dict_expr | array_expr
 binop_expr: expr _WS_INLINE+ CMP_OP _WS_INLINE+ expr
 aggregated_expr: IDENTIFIER "<" _WS_INLINE* (fn_args _WS_INLINE*)? ">"
 funcall_expr: IDENTIFIER "(" _WS_INLINE* (fn_args _WS_INLINE*)? ")"
-dict_expr: "{" _WS* kv_args? _WS* ("," _WS*)? "}"
-array_expr: "[" _WS* (array_element (_WS* "," _WS* array_element)* (_WS* ("," _WS*)?))? "]"
+dict_expr: "{" _WS_AND_COMMENTS* kv_args? _WS_AND_COMMENTS* ("," _WS_AND_COMMENTS*)? "}"
+array_expr: "[" _WS_AND_COMMENTS* (array_element (_WS_AND_COMMENTS* "," _WS_AND_COMMENTS* array_element)* (_WS* ("," _WS*)?))? "]"
 array_element: "*" IDENTIFIER -> asterisk_var | expr
 
 ID_PREFIX: "*"|"**"
@@ -37,6 +37,7 @@ CMP_OP: "=" | ">" | "<" | ">=" | "<=" | "!="
 IDENTIFIER: (LETTER|"_") ("_"|LETTER|DIGIT)* (":" LETTER ("_"|LETTER|DIGIT)*)?
 TYPE: UCASE_LETTER+
 
+_WS_AND_COMMENTS: ((_WS_INLINE* _LINE_COMMENT) | _WS)
 _LINE_COMMENT: _WS_INLINE* /#.*/ _NEWLINE
 _WS: WS
 _WS_INLINE: WS_INLINE

@@ -9,24 +9,21 @@ fn_signature(fn_name: "md5", sql_name: "MD5", val_arg_count: 1, kv_arg_keys: [],
 fn_signature(fn_name: "is_NULL", sql_name: NULL, val_arg_count: 1, kv_arg_keys: [], aggregated: false)
 */
 CREATE MATERIALIZED VIEW fn_signature AS
-    SELECT DISTINCT
-        t.fn_name,
-        t.sql_name,
-        t.val_arg_count,
-        -- kv_arg_keys have to be in sorted order
-        SORT_ARRAY(CAST(t.kv_arg_keys AS TEXT ARRAY)) AS kv_arg_keys,
-        t.aggregated
-    FROM (
-        VALUES
-            ('count', 'COUNT', 0, ARRAY(), true),
-            ('min', 'MIN', 1, ARRAY(), true),
-            ('max', 'MAX', 1, ARRAY(), true),
-            ('some', 'SOME', 1, ARRAY(), true),
-            ('argmin', 'ARG_MIN', 1, ARRAY['by'], true),
-            ('argmax', 'ARG_MAX', 1, ARRAY['by'], true),
-            ('md5', 'MD5', 1, ARRAY(), false),
-            ('is_NULL', NULL, 1, ARRAY(), false)
-    ) AS t (fn_name, sql_name, val_arg_count, kv_arg_keys, aggregated);
+    SELECT 'count' AS fn_name, 'COUNT' AS sql_name, 0 AS val_arg_count, CAST(ARRAY() AS TEXT ARRAY) AS kv_arg_keys, true AS aggregated
+    UNION
+    SELECT 'min' AS fn_name, 'MIN' AS sql_name, 1 AS val_arg_count, CAST(ARRAY() AS TEXT ARRAY) AS kv_arg_keys, true AS aggregated
+    UNION
+    SELECT 'max' AS fn_name, 'MAX' AS sql_name, 1 AS val_arg_count, CAST(ARRAY() AS TEXT ARRAY) AS kv_arg_keys, true AS aggregated
+    UNION
+    SELECT 'some' AS fn_name, 'SOME' AS sql_name, 1 AS val_arg_count, CAST(ARRAY() AS TEXT ARRAY) AS kv_arg_keys, true AS aggregated
+    UNION
+    SELECT 'argmin' AS fn_name, 'ARG_MIN' AS sql_name, 1 AS val_arg_count, ARRAY['by'] AS kv_arg_keys, true AS aggregated
+    UNION
+    SELECT 'argmax' AS fn_name, 'ARG_MAX' AS sql_name, 1 AS val_arg_count, ARRAY['by'] AS kv_arg_keys, true AS aggregated
+    UNION
+    SELECT 'md5' AS fn_name, 'MD5' AS sql_name, 1 AS val_arg_count, CAST(ARRAY() AS TEXT ARRAY) AS kv_arg_keys, false AS aggregated
+    UNION
+    SELECT 'is_NULL' AS fn_name, NULL AS sql_name, 1 AS val_arg_count, CAST(ARRAY() AS TEXT ARRAY) AS kv_arg_keys, false AS aggregated;
 
 /*
 fncall_expr_val_arg_count(pipeline_id:, rule_id:, expr_id:, val_arg_count:, aggregated:) <-

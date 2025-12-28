@@ -197,6 +197,17 @@ def records_from_dict_arg(arg, rule_id, dict_id, idgen):
                 case [expr, Token(type='TYPE', value=assigned_type)]:
                     expr_type, expr_records = records_from_expr(
                         expr, rule_id, expr_id, idgen, assigned_type=assigned_type)
+                case [Token(type='MAYBE_NULL_PREFIX', value='?'), expr]:
+                    expr_type, expr_records = records_from_expr(
+                        expr, rule_id, expr_id, idgen,
+                        maybe_null_prefix=True)
+                case [
+                    Token(type='MAYBE_NULL_PREFIX', value='?'), expr,
+                    Token(type='TYPE', value=assigned_type),
+                ]:
+                    expr_type, expr_records = records_from_expr(
+                        expr, rule_id, expr_id, idgen,
+                        assigned_type=assigned_type, maybe_null_prefix=True)
                 case _:
                     raise Exception(f"Invalid arg expr {arg}")
             return merge_records(
@@ -310,7 +321,7 @@ def records_from_array_element(element, index, rule_id, array_id, idgen):
 def sql_str_into_template_array(s):
     return re.split(r'(\{\{[a-zA-Z_][a-zA-Z0-9_]*\}\})', s)
 
-def records_from_expr(expr, rule_id, expr_id, idgen, assigned_type=None):
+def records_from_expr(expr, rule_id, expr_id, idgen, assigned_type=None, maybe_null_prefix=False):
     match expr:
         case Token(type='NUMBER', value=value):
             return 'int_expr', {
@@ -357,7 +368,7 @@ def records_from_expr(expr, rule_id, expr_id, idgen, assigned_type=None):
                     'expr_id': expr_id,
                     'var_name': value,
                     'assigned_type': assigned_type,
-                    'maybe_null_prefix': False,
+                    'maybe_null_prefix': maybe_null_prefix,
 
                     'start_line': expr.line,
                     'start_column': expr.column,
