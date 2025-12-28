@@ -1173,6 +1173,140 @@ CREATE MATERIALIZED VIEW output_json_type_cast_to AS
     SELECT 'bool_expr' AS expr_type, 'BOOLEAN' AS output_type;
 
 /*
+var_join(pipeline_id:, rule_id:, fact_id:, var_name:, sql:) <-
+    canonical_fact_var_sql(pipeline_id:, rule_id:, fact_index: prev_fact_index, var_name:, sql: prev_sql)
+    var_bound_in_fact(pipeline_id:, rule_id:, fact_id:, fact_index: next_fact_index, var_name:, sql: next_sql, negated: false)
+    prev_fact_index < next_fact_index
+    sql := `{{next_sql}} = {{prev_sql}}`
+*/
+CREATE MATERIALIZED VIEW var_join AS
+    SELECT DISTINCT
+        var_bound_in_fact.pipeline_id,
+        var_bound_in_fact.rule_id,
+        var_bound_in_fact.fact_id,
+        canonical_fact_var_sql.var_name,
+        (var_bound_in_fact.sql || ' = ' || canonical_fact_var_sql.sql) AS sql
+    FROM canonical_fact_var_sql
+    JOIN var_bound_in_fact
+        ON canonical_fact_var_sql.pipeline_id = var_bound_in_fact.pipeline_id
+        AND canonical_fact_var_sql.rule_id = var_bound_in_fact.rule_id
+        AND canonical_fact_var_sql.var_name = var_bound_in_fact.var_name
+        AND NOT var_bound_in_fact.negated
+    WHERE canonical_fact_var_sql.fact_index < var_bound_in_fact.fact_index;
+
+/*
+var_bound(pipeline_id:, rule_id:, var_name:, sql:) <-
+    var_bound_in_fact(pipeline_id:, rule_id:, var_name:, sql:, negated: false)
+var_bound(pipeline_id:, rule_id:, var_name:, sql:) <-
+    var_bound_via_match(pipeline_id:, rule_id:, var_name:, sql:, aggregated: false)
+*/
+CREATE MATERIALIZED VIEW var_bound AS
+    SELECT DISTINCT
+        var_bound_in_fact.pipeline_id,
+        var_bound_in_fact.rule_id,
+        var_bound_in_fact.var_name,
+        var_bound_in_fact.sql
+    FROM var_bound_in_fact
+    WHERE NOT var_bound_in_fact.negated
+
+    UNION
+
+    SELECT DISTINCT
+        var_bound_via_match.pipeline_id,
+        var_bound_via_match.rule_id,
+        var_bound_via_match.var_name,
+        var_bound_via_match.sql
+    FROM var_bound_via_match
+    WHERE NOT var_bound_via_match.aggregated;
+
+/*
+first_var_bound(pipeline_id:, rule_id:, var_name:, sql: min<sql>) <-
+    var_bound(pipeline_id:, rule_id:, var_name:, sql:)
+*/
+CREATE MATERIALIZED VIEW first_var_bound AS
+    SELECT DISTINCT
+        var_bound.pipeline_id,
+        var_bound.rule_id,
+        var_bound.var_name,
+        MIN(var_bound.sql) AS sql
+    FROM var_bound
+    GROUP BY var_bound.pipeline_id, var_bound.rule_id, var_bound.var_name;
+
+/*
+adjacent_var_bound(pipeline_id:, rule_id:, var_name:, prev_sql:, next_sql:) <-
+    first_var_bound(pipeline_id:, rule_id:, var_name:, sql: prev_sql)
+    var_bound(pipeline_id:, rule_id:, var_name:, sql:)
+    prev_sql < sql
+    next_sql := min<sql>
+adjacent_var_bound(pipeline_id:, rule_id:, var_name:, prev_sql:, next_sql:) <-
+    adjacent_var_bound(pipeline_id:, rule_id:, var_name:, next_sql: prev_sql)
+    var_bound(pipeline_id:, rule_id:, var_name:, sql:)
+    prev_sql < sql
+    next_sql := min<sql>
+*/
+DECLARE RECURSIVE VIEW adjacent_var_bound (pipeline_id TEXT, rule_id TEXT, var_name TEXT, prev_sql TEXT, next_sql TEXT);
+CREATE MATERIALIZED VIEW adjacent_var_bound AS
+    SELECT DISTINCT
+        var_bound.pipeline_id,
+        var_bound.rule_id,
+        var_bound.var_name,
+        first_var_bound.sql AS prev_sql,
+        MIN(var_bound.sql) AS next_sql
+    FROM first_var_bound
+    JOIN var_bound
+        ON first_var_bound.pipeline_id = var_bound.pipeline_id
+        AND first_var_bound.rule_id = var_bound.rule_id
+        AND first_var_bound.var_name = var_bound.var_name
+    WHERE first_var_bound.sql < var_bound.sql
+    GROUP BY var_bound.pipeline_id, var_bound.rule_id, var_bound.var_name, first_var_bound.sql
+
+    UNION
+
+    SELECT DISTINCT
+        var_bound.pipeline_id,
+        var_bound.rule_id,
+        var_bound.var_name,
+        adjacent_var_bound.next_sql AS prev_sql,
+        MIN(var_bound.sql) AS next_sql
+    FROM adjacent_var_bound
+    JOIN var_bound
+        ON adjacent_var_bound.pipeline_id = var_bound.pipeline_id
+        AND adjacent_var_bound.rule_id = var_bound.rule_id
+        AND adjacent_var_bound.var_name = var_bound.var_name
+    WHERE adjacent_var_bound.next_sql < var_bound.sql
+    GROUP BY var_bound.pipeline_id, var_bound.rule_id, var_bound.var_name, adjacent_var_bound.next_sql;
+
+/*
+multibind_where_cond(pipeline_id:, rule_id:, sql:) <-
+    adjacent_var_bound(pipeline_id:, rule_id:, var_name:, prev_sql:, next_sql:)
+    not var_join(pipeline_id:, rule_id:, var_name:, sql: `{{prev_sql}} = {{next_sql}}`)
+    not var_join(pipeline_id:, rule_id:, var_name:, sql: `{{next_sql}} = {{prev_sql}}`)
+    sql := `{{prev_sql}} = {{next_sql}}`
+*/
+CREATE MATERIALIZED VIEW multibind_where_cond AS
+    SELECT DISTINCT
+        adjacent_var_bound.pipeline_id,
+        adjacent_var_bound.rule_id,
+        (adjacent_var_bound.prev_sql || ' = ' || adjacent_var_bound.next_sql) AS sql
+    FROM adjacent_var_bound
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM var_join
+        WHERE adjacent_var_bound.pipeline_id = var_join.pipeline_id
+        AND adjacent_var_bound.rule_id = var_join.rule_id
+        AND adjacent_var_bound.var_name = var_join.var_name
+        AND (adjacent_var_bound.prev_sql || ' = ' || adjacent_var_bound.next_sql) = var_join.sql
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM var_join
+        WHERE adjacent_var_bound.pipeline_id = var_join.pipeline_id
+        AND adjacent_var_bound.rule_id = var_join.rule_id
+        AND adjacent_var_bound.var_name = var_join.var_name
+        AND (adjacent_var_bound.next_sql || ' = ' || adjacent_var_bound.prev_sql) = var_join.sql
+    );
+
+/*
 # just variable referenced, make sure it is not null
 fact_where_cond(pipeline_id:, rule_id:, fact_id:, sql:) <-
     fact_oexpr(
@@ -1296,6 +1430,8 @@ where_cond(pipeline_id:, rule_id:, sql:) <-
 where_cond(pipeline_id:, rule_id:, sql:) <-
     match_where_cond(pipeline_id:, rule_id:, sql:)
 where_cond(pipeline_id:, rule_id:, sql:) <-
+    multibind_where_cond(pipeline_id:, rule_id:, sql:)
+where_cond(pipeline_id:, rule_id:, sql:) <-
     body_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:)
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:, aggregated: false)
 */
@@ -1308,6 +1444,9 @@ CREATE MATERIALIZED VIEW where_cond AS
     UNION
     SELECT DISTINCT match_where_cond.pipeline_id, match_where_cond.rule_id, match_where_cond.sql
     FROM match_where_cond
+    UNION
+    SELECT DISTINCT multibind_where_cond.pipeline_id, multibind_where_cond.rule_id, multibind_where_cond.sql
+    FROM multibind_where_cond
     UNION
     SELECT DISTINCT
         body_expr.pipeline_id,
@@ -1607,28 +1746,6 @@ CREATE MATERIALIZED VIEW having_cond_sql AS
         ) AS sql_lines
     FROM having_cond
     GROUP BY having_cond.pipeline_id, having_cond.rule_id;
-
-/*
-var_join(pipeline_id:, rule_id:, fact_id:, var_name:, sql:) <-
-    canonical_fact_var_sql(pipeline_id:, rule_id:, fact_index: prev_fact_index, var_name:, sql: prev_sql)
-    var_bound_in_fact(pipeline_id:, rule_id:, fact_id:, fact_index: next_fact_index, var_name:, sql: next_sql, negated: false)
-    prev_fact_index < next_fact_index
-    sql := `{{next_sql}} = {{prev_sql}}`
-*/
-CREATE MATERIALIZED VIEW var_join AS
-    SELECT DISTINCT
-        var_bound_in_fact.pipeline_id,
-        var_bound_in_fact.rule_id,
-        var_bound_in_fact.fact_id,
-        canonical_fact_var_sql.var_name,
-        (var_bound_in_fact.sql || ' = ' || canonical_fact_var_sql.sql) AS sql
-    FROM canonical_fact_var_sql
-    JOIN var_bound_in_fact
-        ON canonical_fact_var_sql.pipeline_id = var_bound_in_fact.pipeline_id
-        AND canonical_fact_var_sql.rule_id = var_bound_in_fact.rule_id
-        AND canonical_fact_var_sql.var_name = var_bound_in_fact.var_name
-        AND NOT var_bound_in_fact.negated
-    WHERE canonical_fact_var_sql.fact_index < var_bound_in_fact.fact_index;
 
 /*
 rule_join_sql(pipeline_id:, rule_id:, fact_id:, sql_lines:) <-
@@ -1989,10 +2106,16 @@ substituted_param_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:) <-
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:)
     expr_type != 'array_expr'
     expr_type != 'dict_expr'
+    not (sql ~ "^ARRAY[")
+    not (sql ~ "^MAP[")
+    not (sql = "ARRAY()")
+    not (sql = "MAP()")
+# Wrap in VARIANT, in order to avoid errors during ad-hoc queries:
+# https://github.com/feldera/feldera/issues/3726
 substituted_param_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql:) <-
     rule_param(pipeline_id:, rule_id:, key:, expr_id:, expr_type:)
     substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type:, sql: expr_sql)
-    (expr_type = 'array_expr') or (expr_type = 'dict_expr')
+    (expr_type = 'array_expr') or (expr_type = 'dict_expr') or (sql ~ "^ARRAY[") or (sql ~ "^MAP[") or (sql = "ARRAY()")) or (sql = "MAP()")
     sql := `CAST({{expr_sql}} AS VARIANT)`
 */  
 CREATE MATERIALIZED VIEW substituted_param_expr AS
@@ -2010,7 +2133,11 @@ CREATE MATERIALIZED VIEW substituted_param_expr AS
         AND rule_param.expr_type = substituted_expr.expr_type
     WHERE rule_param.expr_type != 'array_expr'
     AND rule_param.expr_type != 'dict_expr'
-
+    AND NOT (substituted_expr.sql RLIKE '^ARRAY\[')
+    AND NOT (substituted_expr.sql RLIKE '^MAP\[')
+    AND NOT (substituted_expr.sql = 'ARRAY\(\)')
+    AND NOT (substituted_expr.sql = 'MAP\(\)')
+    
     UNION
 
     SELECT DISTINCT
@@ -2025,7 +2152,14 @@ CREATE MATERIALIZED VIEW substituted_param_expr AS
         AND rule_param.rule_id = substituted_expr.rule_id
         AND rule_param.expr_id = substituted_expr.expr_id
         AND rule_param.expr_type = substituted_expr.expr_type
-    WHERE ((rule_param.expr_type = 'array_expr') OR (rule_param.expr_type = 'dict_expr'));
+    WHERE (
+        (rule_param.expr_type = 'array_expr')
+        OR (rule_param.expr_type = 'dict_expr')
+        OR (substituted_expr.sql RLIKE '^ARRAY\[')
+        OR (substituted_expr.sql RLIKE '^MAP\[')
+        OR (substituted_expr.sql = 'ARRAY\(\)')
+        OR (substituted_expr.sql = 'MAP\(\)')
+    );
 
 /*
 select_sql(pipeline_id:, rule_id:, sql_lines:) <-

@@ -1,5 +1,5 @@
 # TESTS_TO_RUN = `pwd`/test/*.test.grasp
-TESTS_TO_RUN = `pwd`/test/unnest.test.grasp #`pwd`/test/basic.test.grasp `pwd`/test/joins.test.grasp `pwd`/test/only_facts.test.grasp
+TESTS_TO_RUN = `pwd`/test/json_matching.test.grasp #`pwd`/test/basic.test.grasp `pwd`/test/joins.test.grasp `pwd`/test/only_facts.test.grasp
 
 ensure_transpiler_ready:
 	PYTHONPATH=src python ./src/grasp/scripts/ensure_transpiler_ready.py
