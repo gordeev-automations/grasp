@@ -403,7 +403,7 @@ substituted_array_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated: some<
     substituted_expr(
         pipeline_id:, rule_id:, expr_id: element_expr_id, expr_type: element_expr_type,
         sql: element_sql, aggregated:)
-    sql := "ARRAY[" ++ join(array<element_sql, order_by: [index]>, ", ") ++ "]"
+    sql := "ARRAY[" ++ join(array<"CAST(" ++ element_sql ++ " AS VARIANT)", order_by: [index]>, ", ") ++ "]"
 */
 DECLARE RECURSIVE VIEW substituted_array_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT, aggregated BOOLEAN);
 CREATE MATERIALIZED VIEW substituted_array_expr AS
@@ -411,7 +411,7 @@ CREATE MATERIALIZED VIEW substituted_array_expr AS
         a.pipeline_id,
         a.rule_id,
         a.expr_id,
-        ('ARRAY[' || ARRAY_TO_STRING(ARRAY_AGG(c.sql ORDER BY b."index"), ', ') || ']') AS sql,
+        ('ARRAY[' || ARRAY_TO_STRING(ARRAY_AGG(('CAST(' || c.sql || ' AS VARIANT)') ORDER BY b."index"), ', ') || ']') AS sql,
         SOME(c.aggregated) AS aggregated
     FROM array_expr AS a
     JOIN array_entry AS b
@@ -430,7 +430,7 @@ substituted_dict_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated: some<a
     dict_expr(pipeline_id:, rule_id:, expr_id:, dict_id:)
     dict_entry(pipeline_id:, rule_id:, dict_id:, key:, expr_id: value_expr_id, expr_type: value_expr_type)
     substituted_expr(pipeline_id:, rule_id:, expr_id: value_expr_id, expr_type: value_expr_type, sql: value_sql, aggregated:)
-    sql := "MAP[" ++ join(array<`'{{key}}', {{value_sql}}`>, ", ") ++ "]"
+    sql := "MAP[" ++ join(array<`'{{key}}', CAST({{value_sql}} AS VARIANT)`>, ", ") ++ "]"
 */
 DECLARE RECURSIVE VIEW substituted_dict_expr (pipeline_id TEXT, rule_id TEXT, expr_id TEXT, sql TEXT, aggregated BOOLEAN);
 CREATE MATERIALIZED VIEW substituted_dict_expr AS
@@ -438,7 +438,7 @@ CREATE MATERIALIZED VIEW substituted_dict_expr AS
         a.pipeline_id,
         a.rule_id,
         a.expr_id,
-        ('MAP[' || ARRAY_TO_STRING(ARRAY_AGG('''' || b.key || '''' || ', ' || c.sql), ', ') || ']') AS sql,
+        ('MAP[' || ARRAY_TO_STRING(ARRAY_AGG('''' || b.key || '''' || ', CAST(' || c.sql || ' AS VARIANT)'), ', ') || ']') AS sql,
         SOME(c.aggregated) AS aggregated
     FROM dict_expr AS a
     JOIN dict_entry AS b
@@ -525,7 +525,7 @@ substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "int_expr", sql:, 
     sql := string(value)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "str_expr", sql:, aggregated: false) <-
     str_expr(pipeline_id:, rule_id:, expr_id:, value:)
-    sql := `'{{value}}'`
+    sql := `CAST('{{value}}' AS TEXT)`
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "str_template_expr", sql:, aggregated:) <-
     sustituted_str_template_expr(pipeline_id:, rule_id:, expr_id:, sql:, aggregated:)
 substituted_expr(pipeline_id:, rule_id:, expr_id:, expr_type: "null_expr", sql:, aggregated: false) <-
@@ -557,7 +557,7 @@ CREATE MATERIALIZED VIEW substituted_expr AS
 
     UNION
 
-    SELECT c.pipeline_id, c.rule_id, c.expr_id, 'str_expr' AS expr_type, ('''' || c.value || '''') AS sql, false AS aggregated
+    SELECT c.pipeline_id, c.rule_id, c.expr_id, 'str_expr' AS expr_type, ('CAST(' || '''' || c.value || '''' || ' AS TEXT)') AS sql, false AS aggregated
     FROM str_expr AS c
 
     UNION
@@ -1487,6 +1487,15 @@ neg_fact_where_cond(pipeline_id:, rule_id:, fact_id:, sql_lines:) <-
         *map(rest_cond, x -> `        AND {{x}}`),
         "  )",
     ]
+neg_fact_where_cond(pipeline_id:, rule_id:, fact_id:, sql_lines:) <-
+    fact_alias(pipeline_id:, rule_id:, fact_id:, alias:, table_name:, negated: true)
+    output_table_name(pipeline_id:, table_name:, output_table_name:)
+    not fact_arg(pipeline_id:, rule_id:, fact_id:)
+    sql_lines := [
+        "NOT EXISTS (SELECT 1",
+        `    FROM "{{output_table_name}}" AS "{{alias}}"`,
+        "  )",
+    ]
 */
 CREATE MATERIALIZED VIEW neg_fact_where_cond AS
     SELECT DISTINCT
@@ -1521,7 +1530,31 @@ CREATE MATERIALIZED VIEW neg_fact_where_cond AS
         AND fact_arg.expr_id = substituted_expr.expr_id
         AND fact_arg.expr_type = substituted_expr.expr_type
     WHERE fact_alias.negated
-    GROUP BY fact_alias.pipeline_id, fact_alias.rule_id, fact_alias.fact_id, fact_alias.alias, output_table_name.output_table_name;
+    GROUP BY fact_alias.pipeline_id, fact_alias.rule_id, fact_alias.fact_id, fact_alias.alias, output_table_name.output_table_name
+    
+    UNION
+    
+    SELECT DISTINCT
+        fact_alias.pipeline_id,
+        fact_alias.rule_id,
+        fact_alias.fact_id,
+        ARRAY[
+            'NOT EXISTS (SELECT 1',
+            ('    FROM "' || output_table_name.output_table_name || '" AS "' || fact_alias.alias || '"'),
+            '  )'
+        ] AS sql_lines
+    FROM fact_alias
+    JOIN output_table_name
+        ON fact_alias.pipeline_id = output_table_name.pipeline_id
+        AND fact_alias.table_name = output_table_name.table_name
+    WHERE fact_alias.negated
+    AND NOT EXISTS (
+        SELECT 1
+        FROM fact_arg
+        WHERE fact_alias.pipeline_id = fact_arg.pipeline_id
+        AND fact_alias.rule_id = fact_arg.rule_id
+        AND fact_alias.fact_id = fact_arg.fact_id
+    );
 
 /*
 neg_fact_where_cond_concatenated(pipeline_id:, rule_id:, fact_id:, sql_lines:) <-

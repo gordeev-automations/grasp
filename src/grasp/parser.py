@@ -609,6 +609,21 @@ def records_from_body_stmt(index, stmt, rule_id, idgen):
                     'end_column': stmt.meta.container_end_column,
                 }] },
             ])
+        case Tree(data=Token(type='RULE', value='negated_fact'), children=[
+            Token(type='IDENTIFIER', value=table_name),
+        ]):
+            # negated fact without args, means that we check for existence
+            # of at least one row in the table, without any conditions
+            fact_id = f'ft{next(idgen)}'
+            return { 'body_fact': [{
+                'rule_id': rule_id, 'fact_id': fact_id, 'index': index,
+                'table_name': table_name, 'negated': True,
+
+                'start_line': stmt.meta.container_line,
+                'start_column': stmt.meta.container_column,
+                'end_line': stmt.meta.container_end_line,
+                'end_column': stmt.meta.container_end_column,
+            }] }
         case Tree(data=Token(type='RULE', value='match_stmt'), children=[
             Tree(data=Token(type='RULE', value='expr'), children=[left_expr]),
             Tree(data=Token(type='RULE', value='expr'), children=[right_expr]),
